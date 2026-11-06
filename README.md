@@ -145,20 +145,46 @@ there when one value is to blame.
 ## Developing
 
 ```sh
-# Backend: unit and integration tests, then those that need Docker too.
-cd backend
-cargo test --workspace
-cargo test --workspace -- --include-ignored
-
 # The panel against runners kept in memory.
+cd backend
 GRS_RUNTIME=memory cargo run -p swarm-server
 
-# Web panel: tests, and a dev server that hands /api to the one above.
+# The web panel, served by a dev server that hands /api to the one above.
 cd web
 npm ci
-npm test
 npm run dev
 ```
+
+### Tests
+
+Every level of the system is tested, and `make test` runs them all the
+way CI does (`make test/backend`, `test/web` or `test/e2e` for one):
+
+| Level       | Where                                   | What it holds                                                                                                       |
+| ----------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Unit        | each backend crate's `src/`, `web/src/` | Value objects, use cases against fakes of their ports, each adapter's translation, each component and the panel's state. |
+| Integration | each backend crate's `tests/`           | The use cases with the real adapters; the Docker runtime against a real engine; the official image's script run in bash; the API through its router; the server's binary run as a process. |
+| Integration | `web/src/panel.integration.test.ts`     | The whole panel, mounted, driven through the page alone.                                                            |
+| Contract    | `web/src/adapters/*.contract.test.ts`   | The web panel's types held to what a running API answers (`GRS_API=… npm run test:contract`).                       |
+| End to end  | `e2e/`                                  | The panel's container, built from the Dockerfile and given Docker, driven in a browser, and the runners' containers looked inside. |
+
+The end-to-end tests run GitHub runners from a stand-in image
+(`e2e/fake-runner`) laid out like the official one, so the panel's own
+registration script runs unchanged, with no GitHub account, token or
+network. They only ever create and delete runners of owners starting
+`e2e-` (and `contract-`), so they can run on a Docker holding real
+runners. `E2E_BROWSER_CHANNEL=chrome` runs them in an installed Chrome.
+
+### CI
+
+`.github/workflows/ci.yml` runs the same three levels on every push to
+`main` or `develop` and every pull request: the backend and the web
+panel side by side, then the end-to-end tests once both pass. Its jobs
+run on the `CI_RUNS_ON` repository variable when set (`self-hosted`,
+for a runner of this panel's own making), on `ubuntu-latest` otherwise.
+
+`make ci` runs the workflow on this machine with
+[act](https://github.com/nektos/act).
 
 Branches follow git flow: `main` holds releases, `develop` what is next,
 and each change is a `feature/*` branch off `develop`.

@@ -2,8 +2,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use swarm_domain::{
-    Forge, RegistrationToken, Runner, RunnerDefinition, RunnerId, RunnerLabels, RunnerLifecycle,
-    RunnerName, RunnerScope,
+    Forge, RegistrationToken, Runner, RunnerDefinition, RunnerFilter, RunnerId, RunnerLabels,
+    RunnerLifecycle, RunnerName, RunnerScope,
 };
 use thiserror::Error;
 
@@ -123,6 +123,43 @@ impl RunnerService {
         Ok(self.runtime.launch(&definition, &spec).await?)
     }
 
+    /// The runners `filter` matches, newest first, and by name among
+    /// runners created at once.
+    ///
+    /// # Errors
+    ///
+    /// When the runtime cannot list its runners.
+    pub async fn list(&self, filter: &RunnerFilter) -> Result<Vec<Runner>, RunnerError> {
+        let mut runners: Vec<Runner> = self
+            .runtime
+            .list()
+            .await?
+            .into_iter()
+            .filter(|runner| filter.matches(runner))
+            .collect();
+        runners.sort_by(|a, b| {
+            b.created_at().cmp(&a.created_at()).then_with(|| {
+                a.definition()
+                    .name()
+                    .as_str()
+                    .cmp(b.definition().name().as_str())
+            })
+        });
+        Ok(runners)
+    }
+
+    /// The runner with this id.
+    ///
+    /// # Errors
+    ///
+    /// When there is no such runner, or the runtime cannot be asked.
+    pub async fn get(&self, id: RunnerId) -> Result<Runner, RunnerError> {
+        self.runtime
+            .find(id)
+            .await?
+            .ok_or(RunnerError::NotFound(id))
+    }
+
     fn image_for(&self, forge: Forge, key: Option<&str>) -> Result<&dyn RunnerImage, RunnerError> {
         let Some(key) = key else {
             return self
@@ -147,9 +184,9 @@ impl RunnerService {
 
 #[cfg(test)]
 mod tests {
-    use std::time::SystemTime;
+    use std::time::{Duration, SystemTime};
 
-    use swarm_domain::{ImageReference, RunnerStatus};
+    use swarm_domain::{ImageReference, OwnerName, RunnerStatus};
 
     use super::*;
     use crate::testing::{FakeImage, FakeRuntime};
@@ -177,6 +214,10 @@ mod tests {
     }
 
     fn existing(url: &str, name: &str) -> Runner {
+        existing_at(url, name, 0)
+    }
+
+    fn existing_at(url: &str, name: &str, created_secs: u64) -> Runner {
         Runner::new(
             RunnerDefinition::new(
                 RunnerId::generate(),
@@ -188,8 +229,15 @@ mod tests {
             ),
             ImageReference::new("github-official:latest").unwrap(),
             RunnerStatus::Running,
-            SystemTime::UNIX_EPOCH,
+            SystemTime::UNIX_EPOCH + Duration::from_secs(created_secs),
         )
+    }
+
+    fn names(runners: &[Runner]) -> Vec<&str> {
+        runners
+            .iter()
+            .map(|runner| runner.definition().name().as_str())
+            .collect()
     }
 
     #[tokio::test]
@@ -320,5 +368,50 @@ mod tests {
             RunnerError::Runtime(RuntimeError::ImageUnavailable { .. })
         ));
         assert!(runtime.launched().is_empty());
+    }
+
+    #[tokio::test]
+    async fn lists_the_runners_a_filter_matches() {
+        let runtime = Arc::new(FakeRuntime::holding([
+            existing("https://github.com/otsobide/mindweaver", "builder"),
+            existing("https://github.com/someone/else", "builder"),
+        ]));
+        let filter = RunnerFilter::any().with_owner(OwnerName::new("otsobide").unwrap());
+
+        let runners = service(&runtime).list(&filter).await.unwrap();
+
+        assert_eq!(runners.len(), 1);
+        assert_eq!(runners[0].definition().scope().owner().as_str(), "otsobide");
+    }
+
+    #[tokio::test]
+    async fn lists_the_newest_runners_first_and_by_name_among_equals() {
+        let runtime = Arc::new(FakeRuntime::holding([
+            existing_at("https://github.com/otsobide/mindweaver", "oldest", 1),
+            existing_at("https://github.com/otsobide/mindweaver", "newest-b", 3),
+            existing_at("https://github.com/otsobide/mindweaver", "newest-a", 3),
+        ]));
+
+        let runners = service(&runtime).list(&RunnerFilter::any()).await.unwrap();
+
+        assert_eq!(names(&runners), ["newest-a", "newest-b", "oldest"]);
+    }
+
+    #[tokio::test]
+    async fn gets_a_runner_by_its_id() {
+        let runner = existing("https://github.com/otsobide/mindweaver", "builder");
+        let runtime = Arc::new(FakeRuntime::holding([runner.clone()]));
+
+        assert_eq!(service(&runtime).get(runner.id()).await.unwrap(), runner);
+    }
+
+    #[tokio::test]
+    async fn says_when_there_is_no_runner_with_an_id() {
+        let runtime = Arc::new(FakeRuntime::default());
+        let id = RunnerId::generate();
+
+        let error = service(&runtime).get(id).await.unwrap_err();
+
+        assert!(matches!(error, RunnerError::NotFound(missing) if missing == id));
     }
 }

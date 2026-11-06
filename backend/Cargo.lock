@@ -684,6 +684,7 @@ dependencies = [
  "futures-util",
  "swarm-application",
  "swarm-domain",
+ "tempfile",
  "thiserror",
  "tokio",
  "tracing",

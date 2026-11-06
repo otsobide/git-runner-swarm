@@ -1,0 +1,71 @@
+/*
+ * The panel's look. Colour means status and nothing else: the lamps are
+ * the only saturated things on the page, so a runner in trouble is the
+ * first thing seen. Everything around them is steel and ink.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --page: #e9edf1;
+  --rack: #f7f9fb;
+  --rack-header: #eef2f5;
+  --ink: #18222e;
+  --ink-soft: #566472;
+  --rule: #cbd3db;
+  --field: #ffffff;
+  --action: #18222e;
+  --action-ink: #f7f9fb;
+  --action-hover: #2d3b4a;
+  --focus: #3463d4;
+
+  --lamp-up: #1f9d63;
+  --lamp-trouble: #d99a00;
+  --lamp-down: #d2453b;
+  --lamp-idle: #9aa6b2;
+
+  --danger-ink: #b3352c;
+
+  --font: 'Atkinson Hyperlegible Next', system-ui, sans-serif;
+  --font-mono: 'Atkinson Hyperlegible Mono', ui-monospace, monospace;
+
+  /* A scale of 14, 16, 18, 21 and 28 pixels, from the classic one. */
+  --text-small: 0.875rem;
+  --text-body: 1rem;
+  --text-name: 1.125rem;
+  --text-owner: 1.3125rem;
+  --text-title: 1.75rem;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  --radius-rack: 6px;
+  --radius-control: 4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #151b22;
+    --rack: #1c242d;
+    --rack-header: #212a34;
+    --ink: #e6ecf2;
+    --ink-soft: #9aa7b4;
+    --rule: #2f3a46;
+    --field: #151b22;
+    --action: #e6ecf2;
+    --action-ink: #151b22;
+    --action-hover: #c9d3dc;
+    --focus: #7aa2ff;
+
+    --lamp-up: #34c17f;
+    --lamp-trouble: #f0b429;
+    --lamp-down: #f0625a;
+    --lamp-idle: #5f6c78;
+
+    --danger-ink: #f0857e;
+  }
+}

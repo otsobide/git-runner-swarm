@@ -7,6 +7,7 @@
 
 mod error;
 mod forge;
+mod forge_address;
 mod owner_name;
 mod repository_name;
 mod runner_id;
@@ -16,6 +17,7 @@ mod validate;
 
 pub use error::InvalidValue;
 pub use forge::Forge;
+pub use forge_address::ForgeAddress;
 pub use owner_name::OwnerName;
 pub use repository_name::RepositoryName;
 pub use runner_id::RunnerId;

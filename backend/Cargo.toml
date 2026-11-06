@@ -15,6 +15,7 @@ publish = false
 [workspace.dependencies]
 swarm-domain = { path = "crates/swarm-domain" }
 swarm-application = { path = "crates/swarm-application" }
+swarm-github = { path = "crates/swarm-github" }
 
 async-trait = "0.1.92"
 thiserror = "2.0.21"

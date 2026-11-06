@@ -831,6 +831,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "swarm-domain",
+ "swarm-github",
+ "swarm-memory",
  "thiserror",
  "tokio",
 ]

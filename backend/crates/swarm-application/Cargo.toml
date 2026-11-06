@@ -13,6 +13,11 @@ async-trait.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+# For the integration tests alone: adapters of the application's own
+# ports, which depend on it in turn.
+swarm-github.workspace = true
+swarm-memory.workspace = true
+
 tokio.workspace = true
 
 [lints]

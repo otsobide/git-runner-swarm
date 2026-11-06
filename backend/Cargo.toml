@@ -17,13 +17,20 @@ swarm-domain = { path = "crates/swarm-domain" }
 swarm-application = { path = "crates/swarm-application" }
 swarm-docker = { path = "crates/swarm-docker" }
 swarm-github = { path = "crates/swarm-github" }
+swarm-http = { path = "crates/swarm-http" }
 swarm-memory = { path = "crates/swarm-memory" }
 
 async-trait = "0.1.92"
+axum = "0.8.9"
 bollard = { version = "0.21.1", features = ["time"] }
 futures-util = "0.3.34"
+http-body-util = "0.1.5"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
 tempfile = "3.27.0"
 thiserror = "2.0.21"
+tower = { version = "0.5.3", features = ["util"] }
+tower-http = { version = "0.7.1", features = ["fs"] }
 tracing = "0.1.44"
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread"] }
 uuid = { version = "1.29.0", features = ["v4"] }

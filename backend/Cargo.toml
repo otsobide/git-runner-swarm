@@ -17,6 +17,7 @@ swarm-domain = { path = "crates/swarm-domain" }
 swarm-application = { path = "crates/swarm-application" }
 swarm-docker = { path = "crates/swarm-docker" }
 swarm-github = { path = "crates/swarm-github" }
+swarm-memory = { path = "crates/swarm-memory" }
 
 async-trait = "0.1.92"
 bollard = { version = "0.21.1", features = ["time"] }

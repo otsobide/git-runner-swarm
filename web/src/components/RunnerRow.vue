@@ -137,5 +137,10 @@ function remove() {
   .actions {
     justify-content: flex-start;
   }
+
+  /* Stacked, a runner without labels leaves no gap where they would be. */
+  .labels:empty {
+    display: none;
+  }
 }
 </style>

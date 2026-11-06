@@ -5,3 +5,6 @@
 //! there are.
 
 mod labels;
+mod runtime;
+
+pub use runtime::DockerRuntime;

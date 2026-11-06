@@ -1,0 +1,117 @@
+//! The panel: the application put together with its adapters, serving
+//! its API and its web panel over HTTP.
+//!
+//! This is the one place that knows which adapters there are. Another
+//! runner image (Gitea's, Forgejo's) is added to [`images`]; another
+//! engine, to [`runtime`].
+
+mod config;
+
+use std::error::Error;
+use std::io::IsTerminal;
+use std::process::ExitCode;
+use std::sync::Arc;
+
+use swarm_application::ports::{RunnerImage, RunnerRuntime};
+use swarm_application::{RunnerImages, RunnerService};
+use swarm_docker::DockerRuntime;
+use swarm_github::GitHubOfficialImage;
+use swarm_memory::InMemoryRuntime;
+use tokio::net::TcpListener;
+use tower_http::trace::TraceLayer;
+use tracing_subscriber::EnvFilter;
+
+use crate::config::{Config, RuntimeKind};
+
+#[tokio::main]
+async fn main() -> ExitCode {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        // Colours for a person at a terminal, plain text for `docker logs`.
+        .with_ansi(std::io::stderr().is_terminal())
+        .with_writer(std::io::stderr)
+        .init();
+
+    match run().await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            tracing::error!("{error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+async fn run() -> Result<(), Box<dyn Error>> {
+    let config = Config::from_lookup(|name| std::env::var(name).ok())?;
+
+    let service = Arc::new(RunnerService::new(runtime(&config).await?, images(&config)));
+    let router =
+        swarm_http::router(service, config.web_dir.as_deref()).layer(TraceLayer::new_for_http());
+
+    let listener = TcpListener::bind(config.listen).await?;
+    tracing::info!(address = %listener.local_addr()?, "serving the panel");
+    axum::serve(listener, router)
+        .with_graceful_shutdown(shutdown())
+        .await?;
+    tracing::info!("stopped");
+    Ok(())
+}
+
+/// Where runners run, as the configuration says. Docker is checked to
+/// answer before the panel serves anything, so a panel that cannot reach
+/// it says so once, at start, rather than on every request.
+async fn runtime(config: &Config) -> Result<Arc<dyn RunnerRuntime>, Box<dyn Error>> {
+    match config.runtime {
+        RuntimeKind::Docker => {
+            let docker = DockerRuntime::connect()?.with_stop_timeout(config.stop_timeout);
+            docker.ping().await.map_err(|error| {
+                format!("{error}; is the Docker socket mounted into the panel's container?")
+            })?;
+            tracing::info!("runners run on Docker");
+            Ok(Arc::new(docker))
+        }
+        RuntimeKind::Memory => {
+            tracing::warn!(
+                "runners are kept in memory: none of them runs, and all are lost when the panel stops"
+            );
+            Ok(Arc::new(InMemoryRuntime::new()))
+        }
+    }
+}
+
+/// The images runners can be created from, each forge's default first.
+fn images(config: &Config) -> RunnerImages {
+    RunnerImages::new([
+        Arc::new(GitHubOfficialImage::new(config.github_image.clone())) as Arc<dyn RunnerImage>,
+    ])
+}
+
+/// Resolves when the panel is asked to stop: Ctrl-C, or the SIGTERM
+/// `docker stop` sends. Requests under way are finished first; runners
+/// are left as they are, running on without the panel.
+async fn shutdown() {
+    let interrupt = async {
+        if let Err(error) = tokio::signal::ctrl_c().await {
+            tracing::warn!("cannot listen for Ctrl-C: {error}");
+            std::future::pending::<()>().await;
+        }
+    };
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(error) => {
+                tracing::warn!("cannot listen for SIGTERM: {error}");
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+    tokio::select! {
+        () = interrupt => {}
+        () = terminate => {}
+    }
+    tracing::info!("stopping");
+}

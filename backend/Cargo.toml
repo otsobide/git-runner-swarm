@@ -19,6 +19,7 @@ swarm-docker = { path = "crates/swarm-docker" }
 swarm-github = { path = "crates/swarm-github" }
 swarm-http = { path = "crates/swarm-http" }
 swarm-memory = { path = "crates/swarm-memory" }
+swarm-server = { path = "crates/swarm-server" }
 
 async-trait = "0.1.92"
 axum = "0.8.9"
@@ -30,8 +31,9 @@ serde_json = "1.0.154"
 tempfile = "3.27.0"
 thiserror = "2.0.21"
 tower = { version = "0.5.3", features = ["util"] }
-tower-http = { version = "0.7.1", features = ["fs"] }
+tower-http = { version = "0.7.1", features = ["fs", "trace"] }
 tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread"] }
 uuid = { version = "1.29.0", features = ["v4"] }
 

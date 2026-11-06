@@ -807,7 +807,10 @@ dependencies = [
  "serde_json",
  "swarm-application",
  "swarm-domain",
+ "swarm-github",
+ "swarm-memory",
  "tokio",
+ "tower",
  "tower-http",
  "tracing",
 ]

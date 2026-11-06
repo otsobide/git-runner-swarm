@@ -17,7 +17,11 @@ tower-http.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+swarm-github.workspace = true
+swarm-memory.workspace = true
+
 tokio.workspace = true
+tower.workspace = true
 
 [lints]
 workspace = true

@@ -52,9 +52,9 @@ impl Runner {
         self.status
     }
 
-    /// The code the runner's container last exited with, if it has: 0
-    /// when it stopped cleanly, anything else when the runner failed, for
-    /// one because it could not register.
+    /// The code the runner's container last exited with, while it is
+    /// stopped or being restarted: 0 when it stopped cleanly, anything else
+    /// when the runner failed, for one because it could not register.
     pub fn exit_code(&self) -> Option<i64> {
         self.exit_code
     }

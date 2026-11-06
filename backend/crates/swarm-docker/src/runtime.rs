@@ -296,9 +296,13 @@ fn runner_from(container: &ContainerInspectResponse) -> Result<Runner, String> {
         .created
         .map_or(SystemTime::UNIX_EPOCH, SystemTime::from);
 
+    // A container being restarted has exited, and why it did is what tells
+    // a runner restarted after a crash from one that cannot register.
     let runner = Runner::new(definition, image, status, created_at);
     Ok(match (status, state.and_then(|state| state.exit_code)) {
-        (RunnerStatus::Exited | RunnerStatus::Dead, Some(code)) => runner.with_exit_code(code),
+        (RunnerStatus::Exited | RunnerStatus::Restarting | RunnerStatus::Dead, Some(code)) => {
+            runner.with_exit_code(code)
+        }
         _ => runner,
     })
 }
@@ -533,6 +537,20 @@ mod tests {
         let runner = runner_from(&inspected(&definition(), state)).unwrap();
 
         assert_eq!(runner.status(), RunnerStatus::Exited);
+        assert_eq!(runner.exit_code(), Some(1));
+    }
+
+    #[test]
+    fn keeps_the_code_a_restarting_container_last_exited_with() {
+        let state = ContainerState {
+            status: Some(ContainerStateStatusEnum::RESTARTING),
+            exit_code: Some(1),
+            ..ContainerState::default()
+        };
+
+        let runner = runner_from(&inspected(&definition(), state)).unwrap();
+
+        assert_eq!(runner.status(), RunnerStatus::Restarting);
         assert_eq!(runner.exit_code(), Some(1));
     }
 

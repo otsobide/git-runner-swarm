@@ -7,6 +7,7 @@ import './styles/base.css'
 
 import { createApp } from 'vue'
 
+import { httpGateway } from './adapters/httpGateway'
 import App from './App.vue'
 
-createApp(App).mount('#app')
+createApp(App, { gateway: httpGateway() }).mount('#app')

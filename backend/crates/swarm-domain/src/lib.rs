@@ -13,6 +13,7 @@ mod repository_name;
 mod runner_id;
 mod runner_label;
 mod runner_name;
+mod runner_scope;
 mod validate;
 
 pub use error::InvalidValue;
@@ -23,3 +24,4 @@ pub use repository_name::RepositoryName;
 pub use runner_id::RunnerId;
 pub use runner_label::{RunnerLabel, RunnerLabels};
 pub use runner_name::RunnerName;
+pub use runner_scope::{RunnerScope, ScopeKind};

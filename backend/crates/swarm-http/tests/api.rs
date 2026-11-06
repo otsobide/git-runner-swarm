@@ -34,7 +34,7 @@ fn panel() -> Panel {
         RunnerImages::new([Arc::new(GitHubOfficialImage::default()) as Arc<dyn RunnerImage>]);
     let service = Arc::new(RunnerService::new(runtime.clone(), images));
     Panel {
-        router: swarm_http::router(service),
+        router: swarm_http::router(service, None),
         runtime,
     }
 }

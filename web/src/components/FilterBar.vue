@@ -82,8 +82,12 @@ const labels = computed(() => labelsOf(props.runners))
   gap: var(--space-2);
 }
 
-.search {
-  flex: 1 1 14rem;
+.filters > label {
+  flex: 1 1 9rem;
+}
+
+.filters > .search {
+  flex: 3 1 14rem;
 }
 
 input,

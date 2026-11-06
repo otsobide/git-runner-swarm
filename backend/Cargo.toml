@@ -15,8 +15,10 @@ publish = false
 [workspace.dependencies]
 swarm-domain = { path = "crates/swarm-domain" }
 swarm-application = { path = "crates/swarm-application" }
+swarm-github = { path = "crates/swarm-github" }
 
 async-trait = "0.1.92"
+tempfile = "3.27.0"
 thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread"] }
 uuid = { version = "1.29.0", features = ["v4"] }

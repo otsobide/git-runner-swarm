@@ -8,6 +8,7 @@
 mod error;
 mod forge;
 mod forge_address;
+mod image_reference;
 mod owner_name;
 mod registration_token;
 mod repository_name;
@@ -20,6 +21,7 @@ mod validate;
 pub use error::InvalidValue;
 pub use forge::Forge;
 pub use forge_address::ForgeAddress;
+pub use image_reference::ImageReference;
 pub use owner_name::OwnerName;
 pub use registration_token::RegistrationToken;
 pub use repository_name::RepositoryName;

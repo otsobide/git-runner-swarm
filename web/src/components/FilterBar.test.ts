@@ -64,6 +64,17 @@ describe('FilterBar', () => {
     expect(wrapper.emitted('clear')).toHaveLength(1)
   })
 
+  it('names each field by its label alone, not by the option it shows', () => {
+    const { wrapper } = bar()
+
+    for (const name of ['Search runners', 'Owner', 'Repository', 'Status', 'Label']) {
+      const label = wrapper.findAll('label').find((label) => label.text() === name)!
+      const field = wrapper.find(`[id="${label.attributes('for')}"]`)
+      expect(field.exists(), name).toBe(true)
+      expect(label.element.contains(field.element), name).toBe(false)
+    }
+  })
+
   it('offers no label filter when no runner has a label', () => {
     const wrapper = mount(FilterBar, {
       props: {

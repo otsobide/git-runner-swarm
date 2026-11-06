@@ -1,0 +1,15 @@
+{
+  "name": "git-runner-swarm-e2e",
+  "description": "End-to-end tests of the whole panel: its container, a real Docker engine and a real browser.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@types/node": "26.6.6",
+    "typescript": "6.0.3"
+  }
+}

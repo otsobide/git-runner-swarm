@@ -44,10 +44,11 @@ function racks(wrapper: VueWrapper) {
   }))
 }
 
+/** The field a filter's label names, as a screen reader finds it. */
 function select(wrapper: VueWrapper, name: string) {
-  const found = wrapper.findAll('select').find((select) => select.element.closest('label')?.textContent?.includes(name))
-  if (found === undefined) throw new Error(`no ${name} select`)
-  return found
+  const label = wrapper.findAll('label').find((label) => label.text() === name)
+  if (label === undefined) throw new Error(`no ${name} label`)
+  return wrapper.find(`[id="${label.attributes('for')}"]`)
 }
 
 const fleet = () =>

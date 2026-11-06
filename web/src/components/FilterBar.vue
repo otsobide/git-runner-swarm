@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useId } from 'vue'
 
 import {
   isFiltering,
@@ -30,46 +30,54 @@ const statuses: [RunnerStatus, string][] = [
 const owners = computed(() => ownersOf(props.runners))
 const repositories = computed(() => repositoriesOf(props.runners, props.filters.owner))
 const labels = computed(() => labelsOf(props.runners))
+/** Each field is named by its own label alone, not the option it shows. */
+const id = useId()
 </script>
 
 <template>
   <form class="filters" role="search" aria-label="Filter runners" @submit.prevent>
-    <label class="search">
-      <span class="visually-hidden">Search runners</span>
-      <input v-model="filters.q" type="search" placeholder="Search names and URLs" autocomplete="off" />
-    </label>
+    <div class="field search">
+      <label :for="`${id}-q`" class="visually-hidden">Search runners</label>
+      <input
+        :id="`${id}-q`"
+        v-model="filters.q"
+        type="search"
+        placeholder="Search names and URLs"
+        autocomplete="off"
+      />
+    </div>
 
-    <label>
-      <span class="visually-hidden">Owner</span>
-      <select v-model="filters.owner">
+    <div class="field">
+      <label :for="`${id}-owner`" class="visually-hidden">Owner</label>
+      <select :id="`${id}-owner`" v-model="filters.owner">
         <option value="">Every owner</option>
         <option v-for="owner in owners" :key="owner" :value="owner">{{ owner }}</option>
       </select>
-    </label>
+    </div>
 
-    <label>
-      <span class="visually-hidden">Repository</span>
-      <select v-model="filters.repository" :disabled="repositories.length === 0">
+    <div class="field">
+      <label :for="`${id}-repository`" class="visually-hidden">Repository</label>
+      <select :id="`${id}-repository`" v-model="filters.repository" :disabled="repositories.length === 0">
         <option value="">Every repository</option>
         <option v-for="repository in repositories" :key="repository" :value="repository">{{ repository }}</option>
       </select>
-    </label>
+    </div>
 
-    <label>
-      <span class="visually-hidden">Status</span>
-      <select v-model="filters.status">
+    <div class="field">
+      <label :for="`${id}-status`" class="visually-hidden">Status</label>
+      <select :id="`${id}-status`" v-model="filters.status">
         <option value="">Any status</option>
         <option v-for="[status, text] in statuses" :key="status" :value="status">{{ text }}</option>
       </select>
-    </label>
+    </div>
 
-    <label v-if="labels.length > 0">
-      <span class="visually-hidden">Label</span>
-      <select v-model="filters.label">
+    <div v-if="labels.length > 0" class="field">
+      <label :for="`${id}-label`" class="visually-hidden">Label</label>
+      <select :id="`${id}-label`" v-model="filters.label">
         <option value="">Any label</option>
         <option v-for="label in labels" :key="label" :value="label">{{ label }}</option>
       </select>
-    </label>
+    </div>
 
     <button v-if="isFiltering(filters)" class="button" type="button" @click="emit('clear')">Clear filters</button>
   </form>
@@ -82,11 +90,11 @@ const labels = computed(() => labelsOf(props.runners))
   gap: var(--space-2);
 }
 
-.filters > label {
+.field {
   flex: 1 1 9rem;
 }
 
-.filters > .search {
+.field.search {
   flex: 3 1 14rem;
 }
 

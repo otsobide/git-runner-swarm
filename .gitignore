@@ -1,0 +1,7 @@
+# Build output
+/backend/target/
+/web/node_modules/
+/web/dist/
+
+# Local configuration, which may hold tokens
+.env

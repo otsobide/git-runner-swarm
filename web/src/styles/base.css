@@ -62,3 +62,43 @@ select {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Buttons: one solid for the action a view is for, quiet ones for the rest. */
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.25rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
+  background: var(--rack);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: var(--text-small);
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--ink-soft);
+}
+
+.button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.button--primary {
+  border-color: var(--action);
+  background: var(--action);
+  color: var(--action-ink);
+}
+
+.button--primary:hover:not(:disabled) {
+  border-color: var(--action-hover);
+  background: var(--action-hover);
+}
+
+.button--danger {
+  color: var(--danger-ink);
+}

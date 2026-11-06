@@ -10,5 +10,8 @@ publish.workspace = true
 swarm-application.workspace = true
 swarm-domain.workspace = true
 
+[dev-dependencies]
+tempfile.workspace = true
+
 [lints]
 workspace = true

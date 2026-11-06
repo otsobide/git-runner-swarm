@@ -6,4 +6,9 @@
 //! it runs: an adapter of [`ports::RunnerImage`] knows how to start one
 //! image, and an adapter of the runtime port knows one engine.
 
+mod images;
 pub mod ports;
+#[cfg(test)]
+mod testing;
+
+pub use images::RunnerImages;

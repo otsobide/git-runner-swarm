@@ -1,0 +1,9 @@
+# Only what the image is built from goes into the build context, so a
+# local .env, build output or node_modules never does.
+*
+!backend/Cargo.toml
+!backend/Cargo.lock
+!backend/crates/
+!web/
+web/node_modules/
+web/dist/

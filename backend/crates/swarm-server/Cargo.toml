@@ -11,9 +11,19 @@ name = "git-runner-swarm"
 path = "src/main.rs"
 
 [dependencies]
+swarm-application.workspace = true
+swarm-docker.workspace = true
 swarm-domain.workspace = true
+swarm-github.workspace = true
+swarm-http.workspace = true
+swarm-memory.workspace = true
 
+axum.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["net", "signal"] }
+tower-http.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

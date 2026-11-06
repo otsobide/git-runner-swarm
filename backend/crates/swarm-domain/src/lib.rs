@@ -7,6 +7,8 @@
 
 mod error;
 mod forge;
+mod owner_name;
+mod repository_name;
 mod runner_id;
 mod runner_label;
 mod runner_name;
@@ -14,6 +16,8 @@ mod validate;
 
 pub use error::InvalidValue;
 pub use forge::Forge;
+pub use owner_name::OwnerName;
+pub use repository_name::RepositoryName;
 pub use runner_id::RunnerId;
 pub use runner_label::{RunnerLabel, RunnerLabels};
 pub use runner_name::RunnerName;

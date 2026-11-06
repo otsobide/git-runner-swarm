@@ -3,3 +3,4 @@
 //! JSON.
 
 mod dto;
+mod error;

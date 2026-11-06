@@ -30,8 +30,10 @@ export const officialImage: RunnerImage = {
 
 /**
  * A gateway holding runners in memory, which records every call made to
- * it. Filters match on owner and status alone, which is as much as the
- * panel's state needs of them. `failWith` makes the next call fail.
+ * it. Like the API, it answers copies, fresh each time, as parsed from a
+ * response: changing `runners` is a change on the server, seen on the
+ * next call. Filters match on owner and status alone, which is as much as
+ * the panel's state needs of them. `failWith` makes the next call fail.
  */
 export class FakeGateway implements RunnersGateway {
   runners: Runner[]
@@ -45,11 +47,13 @@ export class FakeGateway implements RunnersGateway {
 
   async listRunners(filters: RunnerFilters = {}): Promise<Runner[]> {
     this.record(`list ${new URLSearchParams(clean(filters)).toString()}`.trim())
-    return this.runners.filter(
-      (runner) =>
-        (!filters.owner || runner.owner === filters.owner) &&
-        (!filters.status || runner.status === filters.status),
-    )
+    return this.runners
+      .filter(
+        (runner) =>
+          (!filters.owner || runner.owner === filters.owner) &&
+          (!filters.status || runner.status === filters.status),
+      )
+      .map(copy)
   }
 
   async listImages(): Promise<RunnerImage[]> {
@@ -59,9 +63,18 @@ export class FakeGateway implements RunnersGateway {
 
   async createRunner(newRunner: NewRunner): Promise<Runner> {
     this.record(`create ${newRunner.name}`)
-    const runner = aRunner({ name: newRunner.name, url: newRunner.url, labels: newRunner.labels })
+    const [owner = '', repository = null] = new URL(newRunner.url).pathname.split('/').filter(Boolean)
+    const runner = aRunner({
+      name: newRunner.name,
+      url: newRunner.url,
+      owner,
+      repository,
+      scope: repository === null ? 'owner' : 'repository',
+      labels: newRunner.labels,
+      lifecycle: newRunner.lifecycle,
+    })
     this.runners = [runner, ...this.runners]
-    return runner
+    return copy(runner)
   }
 
   async startRunner(id: string): Promise<Runner> {
@@ -92,8 +105,13 @@ export class FakeGateway implements RunnersGateway {
     const runner = this.runners.find((runner) => runner.id === id)
     if (runner === undefined) throw new GatewayError(`there is no runner ${id}`, 404, null)
     Object.assign(runner, changes)
-    return runner
+    return copy(runner)
   }
+}
+
+/** The runner as a response would carry it: through JSON, so a copy of it. */
+function copy(runner: Runner): Runner {
+  return JSON.parse(JSON.stringify(runner)) as Runner
 }
 
 function clean(filters: RunnerFilters): Record<string, string> {

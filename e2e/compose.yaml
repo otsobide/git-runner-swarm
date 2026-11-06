@@ -1,0 +1,16 @@
+# The panel as the end-to-end tests run it: built from this repository,
+# given the host's Docker, and running GitHub runners from the image that
+# stands in for the official one (fake-runner/, built by the tests first).
+name: grs-e2e
+services:
+  panel:
+    build: ..
+    ports:
+      - "127.0.0.1:18090:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      GRS_GITHUB_IMAGE: git-runner-swarm-e2e-runner:latest
+      # The stand-in stops at once; no test should wait 30 seconds for it.
+      GRS_STOP_TIMEOUT: "2"
+      RUST_LOG: info

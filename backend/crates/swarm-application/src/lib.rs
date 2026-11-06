@@ -8,7 +8,9 @@
 
 mod images;
 pub mod ports;
+mod service;
 #[cfg(test)]
 mod testing;
 
 pub use images::RunnerImages;
+pub use service::{CreateRunner, RunnerError, RunnerService};

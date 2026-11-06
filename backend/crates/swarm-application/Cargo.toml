@@ -9,5 +9,8 @@ publish.workspace = true
 [dependencies]
 swarm-domain.workspace = true
 
+async-trait.workspace = true
+thiserror.workspace = true
+
 [lints]
 workspace = true

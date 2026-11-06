@@ -906,6 +906,7 @@ dependencies = [
  "swarm-github",
  "swarm-http",
  "swarm-memory",
+ "tempfile",
  "thiserror",
  "tokio",
  "tower-http",

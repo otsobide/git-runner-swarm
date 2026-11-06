@@ -1,0 +1,24 @@
+[package]
+name = "swarm-docker"
+description = "The runtime adapter that runs runners as Docker containers."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+swarm-application.workspace = true
+swarm-domain.workspace = true
+
+async-trait.workspace = true
+bollard.workspace = true
+futures-util.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

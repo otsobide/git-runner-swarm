@@ -1,4 +1,5 @@
 use std::fmt;
+use std::str::FromStr;
 
 use crate::{ForgeAddress, InvalidValue, OwnerName, RepositoryName};
 
@@ -23,12 +24,37 @@ pub enum ScopeKind {
 }
 
 impl ScopeKind {
+    pub const ALL: [ScopeKind; 2] = [ScopeKind::Owner, ScopeKind::Repository];
+
     /// `owner` or `repository`.
     pub fn as_str(self) -> &'static str {
         match self {
             ScopeKind::Owner => "owner",
             ScopeKind::Repository => "repository",
         }
+    }
+}
+
+impl fmt::Display for ScopeKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for ScopeKind {
+    type Err = InvalidValue;
+
+    /// Reads a kind of scope from its name, in any case.
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        ScopeKind::ALL
+            .into_iter()
+            .find(|kind| kind.as_str().eq_ignore_ascii_case(value))
+            .ok_or_else(|| {
+                InvalidValue::new(
+                    "scope",
+                    format!("`{value}` is neither owner nor repository"),
+                )
+            })
     }
 }
 
@@ -227,5 +253,14 @@ mod tests {
         assert!(scope.same_as(&self::scope("https://github.com/otsobide/mindweaver")));
         assert!(!scope.same_as(&self::scope("https://github.com/otsobide")));
         assert!(!scope.same_as(&self::scope("https://ghe.example.com/otsobide/mindweaver")));
+    }
+
+    #[test]
+    fn reads_back_every_kind_of_scope_it_writes() {
+        for kind in ScopeKind::ALL {
+            assert_eq!(kind.to_string().parse(), Ok(kind));
+        }
+        assert_eq!("Repository".parse(), Ok(ScopeKind::Repository));
+        assert_eq!("team".parse::<ScopeKind>().unwrap_err().field(), "scope");
     }
 }

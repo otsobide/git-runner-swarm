@@ -160,6 +160,43 @@ impl RunnerService {
             .ok_or(RunnerError::NotFound(id))
     }
 
+    /// Starts a stopped runner, and answers it as it is once started.
+    ///
+    /// # Errors
+    ///
+    /// When there is no such runner, or the runtime fails to start it.
+    pub async fn start(&self, id: RunnerId) -> Result<Runner, RunnerError> {
+        self.runtime.start(id).await?;
+        self.get(id).await
+    }
+
+    /// Stops a runner, and answers it as it is once stopped. Its forge
+    /// lists it as offline until it is started again.
+    ///
+    /// # Errors
+    ///
+    /// When there is no such runner, or the runtime fails to stop it.
+    pub async fn stop(&self, id: RunnerId) -> Result<Runner, RunnerError> {
+        self.runtime.stop(id).await?;
+        self.get(id).await
+    }
+
+    /// Deletes a runner: removes its container, stopping it first if it
+    /// runs.
+    ///
+    /// Its forge keeps listing it, offline, until it drops runners offline
+    /// for long enough (GitHub: a day for an ephemeral runner, two weeks
+    /// for another), as removing a registration takes a credential of the
+    /// forge's the panel is not given.
+    ///
+    /// # Errors
+    ///
+    /// When there is no such runner, or the runtime fails to remove it.
+    pub async fn delete(&self, id: RunnerId) -> Result<(), RunnerError> {
+        self.runtime.remove(id).await?;
+        Ok(())
+    }
+
     fn image_for(&self, forge: Forge, key: Option<&str>) -> Result<&dyn RunnerImage, RunnerError> {
         let Some(key) = key else {
             return self
@@ -413,5 +450,57 @@ mod tests {
         let error = service(&runtime).get(id).await.unwrap_err();
 
         assert!(matches!(error, RunnerError::NotFound(missing) if missing == id));
+    }
+
+    #[tokio::test]
+    async fn stops_a_runner_and_answers_it_stopped() {
+        let runner = existing("https://github.com/otsobide/mindweaver", "builder");
+        let runtime = Arc::new(FakeRuntime::holding([runner.clone()]));
+
+        let stopped = service(&runtime).stop(runner.id()).await.unwrap();
+
+        assert_eq!(stopped.status(), RunnerStatus::Exited);
+    }
+
+    #[tokio::test]
+    async fn starts_a_stopped_runner_and_answers_it_running() {
+        let runner = existing("https://github.com/otsobide/mindweaver", "builder");
+        let runtime = Arc::new(FakeRuntime::holding([runner.clone()]));
+        let service = service(&runtime);
+        service.stop(runner.id()).await.unwrap();
+
+        let started = service.start(runner.id()).await.unwrap();
+
+        assert_eq!(started.status(), RunnerStatus::Running);
+    }
+
+    #[tokio::test]
+    async fn deletes_a_runner() {
+        let runner = existing("https://github.com/otsobide/mindweaver", "builder");
+        let runtime = Arc::new(FakeRuntime::holding([runner.clone()]));
+
+        service(&runtime).delete(runner.id()).await.unwrap();
+
+        assert_eq!(runtime.runner(runner.id()), None);
+    }
+
+    #[tokio::test]
+    async fn says_when_there_is_no_runner_to_start_stop_or_delete() {
+        let runtime = Arc::new(FakeRuntime::default());
+        let service = service(&runtime);
+        let id = RunnerId::generate();
+
+        assert!(matches!(
+            service.start(id).await,
+            Err(RunnerError::NotFound(_))
+        ));
+        assert!(matches!(
+            service.stop(id).await,
+            Err(RunnerError::NotFound(_))
+        ));
+        assert!(matches!(
+            service.delete(id).await,
+            Err(RunnerError::NotFound(_))
+        ));
     }
 }

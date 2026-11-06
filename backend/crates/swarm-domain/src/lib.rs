@@ -16,6 +16,7 @@ mod runner_id;
 mod runner_label;
 mod runner_name;
 mod runner_scope;
+mod runner_status;
 mod validate;
 
 pub use error::InvalidValue;
@@ -29,3 +30,4 @@ pub use runner_id::RunnerId;
 pub use runner_label::{RunnerLabel, RunnerLabels};
 pub use runner_name::RunnerName;
 pub use runner_scope::{RunnerScope, ScopeKind};
+pub use runner_status::RunnerStatus;

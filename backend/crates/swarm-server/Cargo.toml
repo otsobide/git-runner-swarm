@@ -1,0 +1,32 @@
+[package]
+name = "swarm-server"
+description = "The panel's server: where the application is put together with its adapters, and run."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "git-runner-swarm"
+path = "src/main.rs"
+
+[dependencies]
+swarm-application.workspace = true
+swarm-docker.workspace = true
+swarm-domain.workspace = true
+swarm-github.workspace = true
+swarm-http.workspace = true
+swarm-memory.workspace = true
+
+axum.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["net", "signal"] }
+tower-http.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

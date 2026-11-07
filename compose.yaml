@@ -1,0 +1,24 @@
+# Runs the panel on this host, managing runners on this host's Docker:
+#
+#   docker compose up -d
+#
+# then open http://localhost:8080.
+services:
+  panel:
+    build: .
+    image: git-runner-swarm:latest
+    restart: unless-stopped
+    ports:
+      # The panel has no login yet, and whoever reaches it controls the
+      # host's Docker, so it listens on this host alone. Put it behind a
+      # proxy that authenticates before opening it any wider.
+      - "127.0.0.1:8080:8080"
+    volumes:
+      # What lets the panel create, start, stop and delete runners.
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      RUST_LOG: info
+      # A pinned tag, or a mirror, of GitHub's official runner image:
+      # GRS_GITHUB_IMAGE: ghcr.io/actions/actions-runner:2.338.2
+      # Seconds a runner is given to stop cleanly before it is killed:
+      # GRS_STOP_TIMEOUT: "30"

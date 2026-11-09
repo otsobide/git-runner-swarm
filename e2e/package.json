@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "playwright test",
+    "screenshots": "playwright test --config screenshots.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

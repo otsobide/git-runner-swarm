@@ -1,5 +1,5 @@
 {
-  "include": ["*.ts", "tests/**/*.ts"],
+  "include": ["*.ts", "tests/**/*.ts", "screenshots/**/*.ts"],
   "compilerOptions": {
     "target": "ES2023",
     "lib": ["ES2023", "DOM"],

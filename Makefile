@@ -6,11 +6,12 @@
 #   make test/e2e       the panel's container driven in a browser, then the
 #                       web panel's types held to the API it serves
 #   make ci             the CI workflow itself, on this machine, with act
+#   make screenshots    the documentation's screenshots, into docs/images
 #
 # E2E_BROWSER_CHANNEL=chrome runs the e2e tests in an installed Chrome
 # rather than the Chromium Playwright downloads.
 
-.PHONY: test test/backend test/web test/e2e ci
+.PHONY: test test/backend test/web test/e2e ci screenshots
 
 test: test/backend test/web test/e2e
 
@@ -39,3 +40,9 @@ test/e2e:
 ci:
 	act --workflows .github/workflows/ci.yml \
 	  --platform ubuntu-latest=catthehacker/ubuntu:act-latest
+
+# The panel as built, showing sample runners rather than any Docker's.
+screenshots:
+	cd web && npm ci
+	cd e2e && npm ci
+	cd e2e && npm run screenshots

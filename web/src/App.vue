@@ -83,9 +83,9 @@ async function created(runner: Runner) {
       <section v-else-if="all.length === 0 && loadError === null" class="empty">
         <h2>No runners yet</h2>
         <p>
-          A runner takes jobs from one GitHub repository, or from every repository of a user or organization. Have
-          the registration token GitHub shows under Settings › Actions › Runners › New self-hosted runner at hand,
-          then create the runner here.
+          A runner takes jobs from one GitHub repository, or from every repository of an organization. Have the
+          registration token GitHub shows under Settings › Actions › Runners › New self-hosted runner at hand, then
+          create the runner here.
         </p>
         <button class="button button--primary" type="button" @click="openPanel">New runner</button>
       </section>

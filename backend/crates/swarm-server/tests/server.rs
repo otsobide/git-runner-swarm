@@ -211,6 +211,44 @@ fn refuses_to_start_without_the_docker_engine_it_is_told_to_use() {
 }
 
 #[test]
+#[ignore = "needs a Docker engine; run with --include-ignored"]
+fn never_logs_a_runners_token_however_much_it_is_told_to_log() {
+    // An image without bash: the runner's container is created, with the
+    // token in its environment, then fails to start and is removed, which
+    // leaves nothing behind whatever happens.
+    let image = "busybox:1.37";
+    let pulled = Command::new("docker")
+        .args(["pull", "--quiet", image])
+        .stdout(Stdio::null())
+        .status()
+        .unwrap();
+    assert!(pulled.success());
+    let token = "NEVER-LOGGED-REGISTRATION-TOKEN";
+    let server = Server::start(&[
+        ("GRS_RUNTIME", "docker"),
+        ("GRS_GITHUB_IMAGE", image),
+        ("RUST_LOG", "trace,bollard=trace"),
+    ]);
+
+    let runner = format!(
+        r#"{{"url":"https://github.com/grs-test/logs","name":"log-check","token":"{token}"}}"#
+    );
+    let (status, body) = server.request("POST", "/api/runners", Some(&runner));
+    if status == 201 {
+        let id = body.split('"').nth(3).unwrap();
+        server.request("DELETE", &format!("/api/runners/{id}"), None);
+    }
+    thread::sleep(Duration::from_millis(100));
+
+    assert!(server.logged("TRACE"), "it logged nothing at trace level");
+    assert!(
+        !server.logged(token),
+        "{}",
+        server.log.lock().unwrap().join("\n")
+    );
+}
+
+#[test]
 fn stops_cleanly_when_terminated() {
     let mut server = Server::start(&[]);
     assert_eq!(server.request("GET", "/api/health", None).0, 200);

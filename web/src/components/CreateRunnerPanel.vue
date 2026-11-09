@@ -208,7 +208,7 @@ function sentence(message: string): string {
   inset: 0;
   display: flex;
   justify-content: flex-end;
-  background: color-mix(in srgb, var(--ink) 35%, transparent);
+  background: var(--scrim);
   z-index: 10;
 }
 

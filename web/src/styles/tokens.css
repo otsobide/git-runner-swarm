@@ -18,6 +18,8 @@
   --action-ink: #f7f9fb;
   --action-hover: #2d3b4a;
   --focus: #3463d4;
+  /* What dims the page behind a panel laid over it. */
+  --scrim: rgb(24 34 46 / 35%);
 
   --lamp-up: #1f9d63;
   --lamp-trouble: #d99a00;
@@ -60,6 +62,7 @@
     --action-ink: #151b22;
     --action-hover: #c9d3dc;
     --focus: #7aa2ff;
+    --scrim: rgb(5 8 12 / 62%);
 
     --lamp-up: #34c17f;
     --lamp-trouble: #f0b429;

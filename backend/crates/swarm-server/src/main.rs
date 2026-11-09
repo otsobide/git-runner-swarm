@@ -26,9 +26,7 @@ use crate::config::{Config, RuntimeKind};
 #[tokio::main]
 async fn main() -> ExitCode {
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
+        .with_env_filter(log_filter())
         // Colours for a person at a terminal, plain text for `docker logs`.
         .with_ansi(std::io::stderr().is_terminal())
         .with_writer(std::io::stderr)
@@ -41,6 +39,20 @@ async fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// What the panel logs: what `RUST_LOG` asks for, `info` when it asks for
+/// nothing, but never the Docker client below `info`, whatever it asks:
+/// from `debug` on, the client logs the bodies it sends Docker and gets
+/// back, and a runner's container holds its registration token.
+fn log_filter() -> EnvFilter {
+    EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info"))
+        .add_directive(
+            "bollard=info"
+                .parse()
+                .expect("a valid directive for the Docker client"),
+        )
 }
 
 async fn run() -> Result<(), Box<dyn Error>> {

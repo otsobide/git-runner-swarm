@@ -133,8 +133,8 @@ curl 'http://localhost:8080/api/runners?owner=lumen-labs&label=gpu'
 ## `POST /api/runners`
 
 Creates a runner and starts it, pulling its image first if Docker does
-not have it (the first pull of GitHub's image takes a while: it is about
-2 GB). The answer comes once the container has started; registering
+not have it (the first pull of GitHub's image takes a while: it is over
+2 GB unpacked). The answer comes once the container has started; registering
 with GitHub happens in the container, after that.
 
 | Field       | Required | What it is                                                                                     |

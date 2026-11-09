@@ -4,6 +4,28 @@ Each release, and what it changed. Versions follow
 [Semantic Versioning](https://semver.org); while they are below 1.0,
 a minor release may change what an earlier one did.
 
+## 0.1.1, 2026-11-09
+
+### Fixed
+
+- A runner's registration token is never written to the panel's logs.
+  With `RUST_LOG=debug` or more, the Docker client logged it, in the
+  container it was creating; it is now held to `info` whatever
+  `RUST_LOG` says.
+- In dark mode, the page behind the new-runner form is darkened, rather
+  than washed out.
+- The panel no longer says a user's URL makes a runner of all the
+  user's repositories: GitHub has such runners for organizations only.
+
+### Documentation
+
+- The README is a quick start, with screenshots of the panel in dark
+  mode.
+- `docs/` explains usage, configuration, security, the API, the
+  architecture, development, testing and extending the panel in depth.
+- `make screenshots` takes the documentation's screenshots, from sample
+  runners.
+
 ## 0.1.0, 2026-11-07
 
 The first release: GitHub Actions runners, created and managed from a

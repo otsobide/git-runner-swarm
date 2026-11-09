@@ -100,8 +100,8 @@ function sentence(message: string): string {
           />
           <p v-if="fieldErrors.url" class="error" role="alert">{{ fieldErrors.url }}</p>
           <p :id="`${id}-url-hint`" class="hint">
-            A repository’s URL for a runner of that repository; a user’s or organization’s for a runner of every
-            repository it owns.
+            A repository’s URL for a runner of that repository; an organization’s for a runner of every repository
+            it owns. GitHub shares no runner across a personal account’s repositories.
           </p>
         </div>
 
@@ -208,7 +208,7 @@ function sentence(message: string): string {
   inset: 0;
   display: flex;
   justify-content: flex-end;
-  background: color-mix(in srgb, var(--ink) 35%, transparent);
+  background: var(--scrim);
   z-index: 10;
 }
 

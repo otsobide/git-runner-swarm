@@ -1,0 +1,86 @@
+# Publishes the panel's image to Docker Hub whenever a release is tagged
+# (vX.Y.Z): built for linux/amd64 and linux/arm64, tagged X.Y.Z, X.Y and
+# latest, then pulled back and run on both, to check what was published
+# serves.
+#
+# Needs the repository secret DOCKERHUB_TOKEN: an access token of the
+# Docker Hub account the image belongs to, with read and write access.
+# Tag a release only once CI has passed on the commit tagged.
+
+name: release
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOCKERHUB_USERNAME: otsobide
+  IMAGE: otsobide/git-runner-swarm
+
+jobs:
+  image:
+    name: image (linux/amd64 and linux/arm64, to Docker Hub)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the release
+        uses: actions/checkout@v7
+
+      # Building needs no emulation (the backend is cross-compiled); only
+      # running the arm64 image to check it, at the end, does.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Name the image's tags and labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Check the published image serves, on both platforms
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          for platform in linux/amd64 linux/arm64; do
+            docker run -d --name panel --pull always --platform "$platform" \
+              -e GRS_RUNTIME=memory -p 127.0.0.1:8080:8080 "$IMAGE:$VERSION"
+            served=false
+            for _ in $(seq 1 60); do
+              if curl -fsS http://127.0.0.1:8080/api/health; then served=true; break; fi
+              sleep 1
+            done
+            echo
+            if ! $served; then docker logs panel; exit 1; fi
+            curl -fsS -o /dev/null http://127.0.0.1:8080/
+            echo "$IMAGE:$VERSION serves on $platform"
+            docker rm -f panel > /dev/null
+          done

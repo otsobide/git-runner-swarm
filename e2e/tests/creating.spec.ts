@@ -3,6 +3,8 @@
  * runner registers with, inside its own container, and what the API
  * refuses is shown against the field to blame.
  */
+import { statSync } from 'node:fs'
+
 import { expect, type Page, test } from '@playwright/test'
 
 import {
@@ -85,6 +87,32 @@ test('creates a runner limited as the form says, which Docker holds it to', asyn
   const runner = await runnerNamed(request, 'limited')
   const limits = docker('inspect', '--format', '{{.HostConfig.NanoCpus}} {{.HostConfig.Memory}}', containerOf(runner!))
   expect(limits.trim()).toBe(`500000000 ${256 * 1024 * 1024}`)
+})
+
+test('gives a runner’s jobs this host’s Docker only when asked', async ({ page, request }) => {
+  const form = await openForm(page)
+  await form.getByLabel('Repository or owner URL').fill(`https://github.com/${owner.mine}/mindweaver`)
+  await form.getByLabel('Registration token').fill('E2E-TOKEN')
+  await form.getByLabel('Name', { exact: true }).fill('image-builder')
+  await form.getByRole('checkbox', { name: /this host’s Docker/ }).check()
+  await form.getByRole('button', { name: 'Create runner' }).click()
+  await createRunner(request, { url: `https://github.com/${owner.mine}/mindweaver`, name: 'isolated' })
+
+  await expect(row(page, owner.mine, 'image-builder')).toContainText('Its jobs use this host’s Docker')
+  await expect(row(page, owner.mine, 'isolated')).not.toContainText('Docker')
+  const given = containerOf((await runnerNamed(request, 'image-builder'))!)
+  const isolated = containerOf((await runnerNamed(request, 'isolated'))!)
+  const group = String(statSync('/var/run/docker.sock').gid)
+  expect(docker('inspect', '--format', '{{json .HostConfig.Binds}} {{json .HostConfig.GroupAdd}}', given).trim()).toBe(
+    `["/var/run/docker.sock:/var/run/docker.sock"] ["${group}"]`,
+  )
+  // The runner's own user, not root, may use the socket, through the group it joined.
+  expect(docker('exec', given, 'sh', '-c', 'id -u; test -w /var/run/docker.sock && echo writable').split('\n')).toEqual([
+    '1001',
+    'writable',
+    '',
+  ])
+  expect(() => docker('exec', isolated, 'test', '-e', '/var/run/docker.sock')).toThrow()
 })
 
 test('points at the field holding a value the API refuses', async ({ page }) => {

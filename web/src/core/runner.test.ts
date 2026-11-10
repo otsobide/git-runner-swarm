@@ -3,11 +3,14 @@ import { describe, expect, it } from 'vitest'
 import {
   canStart,
   canStop,
+  cpusText,
   createdAgo,
   groupByOwner,
   healthOf,
   isFiltering,
   labelsOf,
+  limitsText,
+  memoryText,
   ownersOf,
   repositoriesOf,
   type Runner,
@@ -27,6 +30,8 @@ function runner(overrides: Partial<Runner> = {}): Runner {
     name: 'builder',
     labels: ['gpu'],
     lifecycle: 'persistent',
+    cpus: null,
+    memory: null,
     image: 'ghcr.io/actions/actions-runner:latest',
     status: 'running',
     exit_code: null,
@@ -161,5 +166,28 @@ describe('createdAgo', () => {
     expect(createdAgo(runner({ created_at: 1_700_000_000 - 5 * 60 }), now)).toBe('5 minutes ago')
     expect(createdAgo(runner({ created_at: 1_700_000_000 - 3 * 3600 }), now)).toBe('3 hours ago')
     expect(createdAgo(runner({ created_at: 1_700_000_000 - 86_400 }), now)).toBe('yesterday')
+  })
+})
+
+describe('what a runner may use of its host', () => {
+  it('reads a memory limit in binary units', () => {
+    expect(memoryText('4g')).toBe('4 GiB')
+    expect(memoryText('1536m')).toBe('1536 MiB')
+    expect(memoryText('2t')).toBe('2 TiB')
+    expect(memoryText('6145k')).toBe('6145 KiB')
+    expect(memoryText('6291457b')).toBe('6291457 bytes')
+  })
+
+  it('reads a CPU limit as a number of CPUs', () => {
+    expect(cpusText('1')).toBe('1 CPU')
+    expect(cpusText('2')).toBe('2 CPUs')
+    expect(cpusText('0.5')).toBe('0.5 CPUs')
+  })
+
+  it('says what is limited, and nothing when nothing is', () => {
+    expect(limitsText(runner({ cpus: '2', memory: '4g' }))).toBe('Up to 2 CPUs and 4 GiB of memory')
+    expect(limitsText(runner({ cpus: '0.5' }))).toBe('Up to 0.5 CPUs')
+    expect(limitsText(runner({ memory: '512m' }))).toBe('Up to 512 MiB of memory')
+    expect(limitsText(runner())).toBeNull()
   })
 })

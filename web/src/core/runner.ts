@@ -20,6 +20,10 @@ export interface Runner {
   name: string
   labels: string[]
   lifecycle: Lifecycle
+  /** The most CPUs it may use, `1.5`; `null` for no limit. */
+  cpus: string | null
+  /** The most memory it may use, as Docker writes sizes, `4g`; `null` for no limit. */
+  memory: string | null
   image: string
   status: RunnerStatus
   exit_code: number | null
@@ -42,6 +46,10 @@ export interface NewRunner {
   token: string
   labels: string[]
   lifecycle: Lifecycle
+  /** The most CPUs it may use, `1.5`; no limit when left out. */
+  cpus?: string
+  /** The most memory it may use, `4g`; no limit when left out. */
+  memory?: string
   /** The key of the image; the forge's default when left out. */
   image?: string
 }
@@ -210,4 +218,26 @@ function sameName(a: string, b: string): boolean {
 
 function byText(a: string, b: string): number {
   return a.localeCompare(b, 'en', { sensitivity: 'base' })
+}
+
+const memoryUnits: Record<string, string> = { t: 'TiB', g: 'GiB', m: 'MiB', k: 'KiB', b: 'bytes' }
+
+/** A memory limit as a person reads it: `4g` is `4 GiB`. */
+export function memoryText(memory: string): string {
+  const match = /^(\d+)([tgmkb])$/.exec(memory)
+  return match === null ? memory : `${match[1]} ${memoryUnits[match[2]!]}`
+}
+
+/** A CPU limit as a person reads it: `1` is `1 CPU`, `0.5` is `0.5 CPUs`. */
+export function cpusText(cpus: string): string {
+  return cpus === '1' ? '1 CPU' : `${cpus} CPUs`
+}
+
+/** What a runner may use of its host, in words; `null` when nothing is limited. */
+export function limitsText(runner: Runner): string | null {
+  const limits = [
+    runner.cpus === null ? null : cpusText(runner.cpus),
+    runner.memory === null ? null : `${memoryText(runner.memory)} of memory`,
+  ].filter((limit) => limit !== null)
+  return limits.length === 0 ? null : `Up to ${limits.join(' and ')}`
 }

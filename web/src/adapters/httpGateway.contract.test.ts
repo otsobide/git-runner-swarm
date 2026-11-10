@@ -32,6 +32,8 @@ function expectRunner(value: Runner) {
       'name',
       'labels',
       'lifecycle',
+      'cpus',
+      'memory',
       'image',
       'status',
       'exit_code',
@@ -44,6 +46,8 @@ function expectRunner(value: Runner) {
   expect(value.repository === null || typeof value.repository === 'string').toBe(true)
   expect(value.labels.every((label) => typeof label === 'string')).toBe(true)
   expect(['persistent', 'ephemeral']).toContain(value.lifecycle)
+  expect(value.cpus === null || typeof value.cpus === 'string').toBe(true)
+  expect(value.memory === null || typeof value.memory === 'string').toBe(true)
   expect(['created', 'running', 'restarting', 'paused', 'exited', 'dead']).toContain(value.status)
   expect(value.exit_code === null || Number.isInteger(value.exit_code)).toBe(true)
   expect(Number.isInteger(value.created_at)).toBe(true)
@@ -96,6 +100,13 @@ describe.skipIf(api === undefined)('httpGateway against the API', () => {
     const runner = await create('owner-wide', { url: `https://github.com/${owner}`, lifecycle: 'ephemeral' })
 
     expect(runner).toMatchObject({ repository: null, scope: 'owner', lifecycle: 'ephemeral' })
+  })
+
+  it('creates a runner limited as asked, answering its limits as the panel reads them', async () => {
+    const runner = await create('limited', { cpus: '0.5', memory: '512m' })
+
+    expectRunner(runner)
+    expect(runner).toMatchObject({ cpus: '0.5', memory: '512m' })
   })
 
   it('stops and starts a runner, answering it in its new state', async () => {

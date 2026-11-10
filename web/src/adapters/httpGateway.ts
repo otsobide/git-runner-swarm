@@ -48,8 +48,9 @@ export function httpGateway(
     },
 
     createRunner(newRunner: NewRunner) {
-      const { image, ...rest } = newRunner
-      const body = image === undefined || image === '' ? rest : newRunner
+      // What was left blank is left out, for the API's default.
+      const { image, cpus, memory, ...rest } = newRunner
+      const body = { ...rest, ...given({ cpus, memory, image }) }
       return request<Runner>('/runners', { method: 'POST', body: JSON.stringify(body) })
     },
 
@@ -65,6 +66,13 @@ export function httpGateway(
       return request<void>(runner(id), { method: 'DELETE' })
     },
   }
+}
+
+/** The fields given a value that is not blank. */
+function given(fields: Record<string, string | undefined>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(fields).filter((field): field is [string, string] => (field[1] ?? '').trim() !== ''),
+  )
 }
 
 function isErrorBody(body: unknown): body is { error?: string; field?: string } {

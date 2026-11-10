@@ -13,6 +13,8 @@ export function aRunner(overrides: Partial<Runner> = {}): Runner {
     name: 'builder',
     labels: [],
     lifecycle: 'persistent',
+    cpus: null,
+    memory: null,
     image: 'ghcr.io/actions/actions-runner:latest',
     status: 'running',
     exit_code: null,
@@ -72,6 +74,8 @@ export class FakeGateway implements RunnersGateway {
       scope: repository === null ? 'owner' : 'repository',
       labels: newRunner.labels,
       lifecycle: newRunner.lifecycle,
+      cpus: newRunner.cpus ?? null,
+      memory: newRunner.memory ?? null,
     })
     this.runners = [runner, ...this.runners]
     return copy(runner)

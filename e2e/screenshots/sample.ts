@@ -15,6 +15,9 @@ export interface SampleRunner {
   name: string
   labels: string[]
   lifecycle: 'persistent' | 'ephemeral'
+  cpus: string | null
+  memory: string | null
+  host_docker: boolean
   image: string
   status: 'running' | 'restarting' | 'exited'
   exit_code: number | null
@@ -43,6 +46,9 @@ function runner(url: string, name: string, rest: Partial<SampleRunner> = {}): Sa
     name,
     labels: [],
     lifecycle: 'persistent',
+    cpus: null,
+    memory: null,
+    host_docker: false,
     image,
     status: 'running',
     exit_code: null,
@@ -52,9 +58,25 @@ function runner(url: string, name: string, rest: Partial<SampleRunner> = {}): Sa
 }
 
 const runners: SampleRunner[] = [
-  runner('https://github.com/lumen-labs', 'build-1', { labels: ['docker', 'large'], created_at: now - 12 * days }),
-  runner('https://github.com/lumen-labs', 'build-2', { labels: ['docker', 'large'], created_at: now - 12 * days }),
-  runner('https://github.com/lumen-labs/inference', 'gpu-1', { labels: ['gpu', 'cuda'], created_at: now - 3 * days }),
+  runner('https://github.com/lumen-labs', 'build-1', {
+    labels: ['docker', 'large'],
+    cpus: '4',
+    memory: '8g',
+    host_docker: true,
+    created_at: now - 12 * days,
+  }),
+  runner('https://github.com/lumen-labs', 'build-2', {
+    labels: ['docker', 'large'],
+    cpus: '4',
+    memory: '8g',
+    host_docker: true,
+    created_at: now - 12 * days,
+  }),
+  runner('https://github.com/lumen-labs/inference', 'gpu-1', {
+    labels: ['gpu', 'cuda'],
+    memory: '32g',
+    created_at: now - 3 * days,
+  }),
   runner('https://github.com/lumen-labs/inference', 'nightly', {
     status: 'exited',
     exit_code: 0,
@@ -66,7 +88,7 @@ const runners: SampleRunner[] = [
     exit_code: 0,
     created_at: now - 2 * hours,
   }),
-  runner('https://github.com/quayside-dev/api', 'api-1', { labels: ['arm64'], created_at: now - 20 * days }),
+  runner('https://github.com/quayside-dev/api', 'api-1', { labels: ['arm64'], cpus: '2', created_at: now - 20 * days }),
   runner('https://github.com/quayside-dev/api', 'api-2', {
     labels: ['arm64'],
     status: 'restarting',
@@ -94,3 +116,28 @@ export const sampleImages = [
     description: "GitHub's official runner image: the Actions runner on Ubuntu, and nothing else",
   },
 ]
+
+/** What gpu-1 has logged: registering, connecting, and two jobs. */
+export const sampleLog = [
+  '',
+  '# Authentication',
+  '',
+  '√ Connected to GitHub',
+  '',
+  '# Runner Registration',
+  '',
+  '√ Runner successfully added',
+  '',
+  '# Runner settings',
+  '',
+  '√ Settings Saved.',
+  '',
+  '√ Connected to GitHub',
+  '',
+  "Current runner version: '2.338.2'",
+  '2026-11-07 07:07:20Z: Listening for Jobs',
+  '2026-11-07 09:12:41Z: Running job: train (3.12)',
+  '2026-11-07 09:31:05Z: Job train (3.12) completed with result: Succeeded',
+  '2026-11-08 16:02:17Z: Running job: evaluate',
+  '2026-11-08 16:09:52Z: Job evaluate completed with result: Succeeded',
+].map((text) => ({ stream: 'stdout', text }))

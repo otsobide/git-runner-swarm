@@ -4,6 +4,18 @@ Each release, and what it changed. Versions follow
 [Semantic Versioning](https://semver.org); while they are below 1.0,
 a minor release may change what an earlier one did.
 
+## 0.2.1, 2026-11-10
+
+### Distribution
+
+- The panel's image is published on Docker Hub, as
+  `otsobide/git-runner-swarm`, for linux/amd64 and linux/arm64, tagged
+  with each version, each minor version's latest and `latest`. Running
+  the panel no longer takes a clone or a build:
+  `docker compose up -d` with the repository's compose file, or the
+  `docker run` in the README.
+- The image is built for arm64 by cross-compiling, with no emulation.
+
 ## 0.2.0, 2026-11-10
 
 ### Added

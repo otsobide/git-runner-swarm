@@ -24,21 +24,24 @@ and which are failing, and start, stop or delete them.
 - **Stores nothing but Docker**: a runner is a container, with its
   definition in the container's labels. The panel can be stopped or
   upgraded while the runners carry on.
-- **Runs as one small container** (about 54 MB): a Rust backend and a
-  Vue panel, given the host's Docker socket. Light and dark mode, on a
-  desktop or a phone.
+- **Runs as one small container** (about 54 MB, for amd64 and arm64): a
+  Rust backend and a Vue panel, given the host's Docker socket. Light
+  and dark mode, on a desktop or a phone.
 
 ## Quick start
 
-On a Linux host with Docker:
+On a Linux host with Docker, amd64 or arm64, run the image published on
+[Docker Hub](https://hub.docker.com/r/otsobide/git-runner-swarm):
 
 ```sh
-git clone https://github.com/otsobide/git-runner-swarm.git
-cd git-runner-swarm
-docker compose up -d
+docker run -d --name git-runner-swarm --restart unless-stopped \
+  -p 127.0.0.1:8080:8080 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  otsobide/git-runner-swarm
 ```
 
-Open <http://localhost:8080>. Then, for each runner:
+or, with this repository's [`compose.yaml`](compose.yaml), `docker
+compose up -d`. Open <http://localhost:8080>. Then, for each runner:
 
 1. On GitHub, open the repository's **Settings › Actions › Runners ›
    New self-hosted runner** (or the organization's), and copy the token

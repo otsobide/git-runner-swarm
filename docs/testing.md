@@ -161,3 +161,8 @@ need a Docker engine the job can use, as GitHub's hosted runners have.
 
 `make ci` runs the same workflow locally with act, in
 `catthehacker/ubuntu:act-latest` containers that use the host's Docker.
+
+A second workflow, `release.yml`, runs when a release is tagged: it
+publishes the image to Docker Hub for amd64 and arm64, then pulls what
+it published and checks it serves on both (see
+[development.md](development.md#releasing)).

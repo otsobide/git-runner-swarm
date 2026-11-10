@@ -156,6 +156,40 @@ async fn creates_a_runner_running_after_pulling_its_image() {
 }
 
 #[tokio::test]
+async fn creates_a_runner_limited_as_it_is_asked_and_answers_its_limits() {
+    let panel = panel();
+    let mut body = runner("https://github.com/otsobide/mindweaver", "builder");
+    body["cpus"] = json!(1.5);
+    body["memory"] = json!("2048m");
+
+    let answer = panel.post("/api/runners", Some(body)).await;
+    let id = answer.body["id"].as_str().unwrap().to_owned();
+    let shown = panel.get(&format!("/api/runners/{id}")).await;
+
+    assert_eq!(answer.status, StatusCode::CREATED);
+    assert_eq!(answer.body["cpus"], "1.5");
+    assert_eq!(answer.body["memory"], "2g");
+    assert_eq!(shown.body["cpus"], "1.5");
+    assert_eq!(shown.body["memory"], "2g");
+}
+
+#[tokio::test]
+async fn refuses_a_limit_naming_it() {
+    for (field, value, refused) in [
+        ("cpus", json!("0"), "CPU limit"),
+        ("memory", json!("512"), "memory limit"),
+    ] {
+        let mut body = runner("https://github.com/otsobide/mindweaver", "builder");
+        body[field] = value;
+
+        let answer = panel().post("/api/runners", Some(body)).await;
+
+        assert_eq!(answer.status, StatusCode::UNPROCESSABLE_ENTITY, "{field}");
+        assert_eq!(answer.body["field"], refused, "{field}");
+    }
+}
+
+#[tokio::test]
 async fn never_answers_the_token_a_runner_was_created_with() {
     let panel = panel();
     let created = panel

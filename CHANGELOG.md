@@ -4,6 +4,14 @@ Each release, and what it changed. Versions follow
 [Semantic Versioning](https://semver.org); while they are below 1.0,
 a minor release may change what an earlier one did.
 
+## 0.2.2, 2026-11-10
+
+### Distribution
+
+- The image's page on Docker Hub has an Overview, starting with how to
+  get started, and a short description, both kept from the repository
+  (`docs/dockerhub.md`).
+
 ## 0.2.1, 2026-11-10
 
 ### Distribution

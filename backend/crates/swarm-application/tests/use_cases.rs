@@ -8,8 +8,9 @@ use std::sync::Arc;
 use swarm_application::ports::RunnerImage;
 use swarm_application::{CreateRunner, RunnerError, RunnerImages, RunnerService};
 use swarm_domain::{
-    Forge, ImageReference, OwnerName, RegistrationToken, Runner, RunnerFilter, RunnerLabel,
-    RunnerLabels, RunnerLifecycle, RunnerName, RunnerScope, RunnerStatus, ScopeKind,
+    EngineAccess, Forge, ImageReference, OwnerName, RegistrationToken, Runner, RunnerFilter,
+    RunnerLabel, RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope,
+    RunnerStatus, ScopeKind,
 };
 use swarm_github::GitHubOfficialImage;
 use swarm_memory::InMemoryRuntime;
@@ -28,6 +29,8 @@ fn command(url: &str, name: &str, labels: &str) -> CreateRunner {
         name: RunnerName::new(name).unwrap(),
         labels: RunnerLabels::parse_comma_separated(labels).unwrap(),
         lifecycle: RunnerLifecycle::Persistent,
+        limits: RunnerLimits::none(),
+        engine_access: EngineAccess::Isolated,
         token: RegistrationToken::new("AESOHC2SEXAMPLE").unwrap(),
         image: None,
     }

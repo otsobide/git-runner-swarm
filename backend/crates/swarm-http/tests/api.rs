@@ -156,6 +156,56 @@ async fn creates_a_runner_running_after_pulling_its_image() {
 }
 
 #[tokio::test]
+async fn creates_a_runner_limited_as_it_is_asked_and_answers_its_limits() {
+    let panel = panel();
+    let mut body = runner("https://github.com/otsobide/mindweaver", "builder");
+    body["cpus"] = json!(1.5);
+    body["memory"] = json!("2048m");
+
+    let answer = panel.post("/api/runners", Some(body)).await;
+    let id = answer.body["id"].as_str().unwrap().to_owned();
+    let shown = panel.get(&format!("/api/runners/{id}")).await;
+
+    assert_eq!(answer.status, StatusCode::CREATED);
+    assert_eq!(answer.body["cpus"], "1.5");
+    assert_eq!(answer.body["memory"], "2g");
+    assert_eq!(shown.body["cpus"], "1.5");
+    assert_eq!(shown.body["memory"], "2g");
+}
+
+#[tokio::test]
+async fn gives_a_runner_the_hosts_docker_only_when_asked() {
+    let panel = panel();
+    let mut asking = runner("https://github.com/otsobide/mindweaver", "given");
+    asking["host_docker"] = json!(true);
+
+    let given = panel.post("/api/runners", Some(asking)).await;
+    let isolated = panel
+        .created("https://github.com/otsobide/mindweaver", "isolated")
+        .await;
+
+    assert_eq!(given.status, StatusCode::CREATED);
+    assert_eq!(given.body["host_docker"], true);
+    assert_eq!(isolated["host_docker"], false);
+}
+
+#[tokio::test]
+async fn refuses_a_limit_naming_it() {
+    for (field, value, refused) in [
+        ("cpus", json!("0"), "CPU limit"),
+        ("memory", json!("512"), "memory limit"),
+    ] {
+        let mut body = runner("https://github.com/otsobide/mindweaver", "builder");
+        body[field] = value;
+
+        let answer = panel().post("/api/runners", Some(body)).await;
+
+        assert_eq!(answer.status, StatusCode::UNPROCESSABLE_ENTITY, "{field}");
+        assert_eq!(answer.body["field"], refused, "{field}");
+    }
+}
+
+#[tokio::test]
 async fn never_answers_the_token_a_runner_was_created_with() {
     let panel = panel();
     let created = panel
@@ -349,6 +399,30 @@ async fn deletes_a_runner() {
     assert_eq!(deleted.status, StatusCode::NO_CONTENT);
     assert_eq!(panel.get(&uri).await.status, StatusCode::NOT_FOUND);
     assert_eq!(panel.delete(&uri).await.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn answers_a_runners_log_and_refuses_to_read_too_much_of_it() {
+    let panel = panel();
+    let created = panel
+        .created("https://github.com/otsobide/mindweaver", "builder")
+        .await;
+    let id = created["id"].as_str().unwrap();
+
+    let read = panel.get(&format!("/api/runners/{id}/logs?lines=10")).await;
+    let too_much = panel
+        .get(&format!("/api/runners/{id}/logs?lines=9999"))
+        .await;
+    let unknown = panel
+        .get("/api/runners/00000000-0000-4000-8000-000000000000/logs")
+        .await;
+
+    // Runners kept in memory run nothing, and so log nothing.
+    assert_eq!(read.status, StatusCode::OK);
+    assert_eq!(read.body, json!({ "lines": [] }));
+    assert_eq!(too_much.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(too_much.body["field"], "lines");
+    assert_eq!(unknown.status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

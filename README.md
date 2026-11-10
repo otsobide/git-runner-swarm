@@ -16,6 +16,11 @@ and which are failing, and start, stop or delete them.
   status lamp: running, restarting, failed, stopped.
 - **Starts, stops and deletes** runners, and finds them by name, URL,
   owner, repository, status or label.
+- **Shows each runner's logs**, kept current, so a runner that fails
+  says why.
+- **Limits** the CPU and memory each runner may use, and, only when
+  asked, gives a runner's jobs the host's Docker to build images and run
+  containers with.
 - **Stores nothing but Docker**: a runner is a container, with its
   definition in the container's labels. The panel can be stopped or
   upgraded while the runners carry on.
@@ -53,8 +58,9 @@ The runner registers with GitHub as its container starts, and shows as
 Whoever can reach the panel controls the host's Docker, which is root
 on the host, and the panel has no login yet. `compose.yaml` publishes it
 on localhost only: reach it through an SSH tunnel, or put it behind a
-proxy that authenticates. See [security](docs/security.md), also for
-what self-hosted runners mean for public repositories.
+proxy that authenticates. The jobs of a runner given the host's Docker
+are as much root on the host. See [security](docs/security.md), also
+for what self-hosted runners mean for public repositories.
 
 ## Documentation
 

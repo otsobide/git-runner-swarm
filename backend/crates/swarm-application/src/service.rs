@@ -2,8 +2,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use swarm_domain::{
-    Forge, RegistrationToken, Runner, RunnerDefinition, RunnerFilter, RunnerId, RunnerLabels,
-    RunnerLifecycle, RunnerName, RunnerScope,
+    EngineAccess, Forge, LogLine, LogTail, RegistrationToken, Runner, RunnerDefinition,
+    RunnerFilter, RunnerId, RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope,
 };
 use thiserror::Error;
 
@@ -24,6 +24,10 @@ pub struct CreateRunner {
     pub name: RunnerName,
     pub labels: RunnerLabels,
     pub lifecycle: RunnerLifecycle,
+    /// What it may use of its host.
+    pub limits: RunnerLimits,
+    /// Whether its jobs may use the engine it runs on.
+    pub engine_access: EngineAccess,
     pub token: RegistrationToken,
     /// The key of the image to create it from; its forge's default if
     /// `None`.
@@ -105,7 +109,9 @@ impl RunnerService {
             command.name,
             command.labels,
             command.lifecycle,
-        );
+        )
+        .with_limits(command.limits)
+        .with_engine_access(command.engine_access);
 
         let runners = self.runtime.list().await?;
         if runners
@@ -197,6 +203,17 @@ impl RunnerService {
         Ok(())
     }
 
+    /// The latest lines a runner logged, oldest first, as many as `tail`
+    /// says at most: what the runner says as it registers and connects,
+    /// and the jobs it runs.
+    ///
+    /// # Errors
+    ///
+    /// When there is no such runner, or the runtime cannot read its log.
+    pub async fn logs(&self, id: RunnerId, tail: LogTail) -> Result<Vec<LogLine>, RunnerError> {
+        Ok(self.runtime.logs(id, tail).await?)
+    }
+
     fn image_for(&self, forge: Forge, key: Option<&str>) -> Result<&dyn RunnerImage, RunnerError> {
         let Some(key) = key else {
             return self
@@ -245,6 +262,8 @@ mod tests {
             name: RunnerName::new(name).unwrap(),
             labels: RunnerLabels::parse_comma_separated("gpu").unwrap(),
             lifecycle: RunnerLifecycle::Persistent,
+            limits: RunnerLimits::none(),
+            engine_access: EngineAccess::Isolated,
             token: RegistrationToken::new("AESOHC2S").unwrap(),
             image: None,
         }
@@ -289,6 +308,56 @@ mod tests {
         assert_eq!(runner.definition().name().as_str(), "builder");
         assert_eq!(runner.image().as_str(), "github-official:latest");
         assert_eq!(runtime.runner(runner.id()), Some(runner));
+    }
+
+    #[tokio::test]
+    async fn creates_a_runner_limited_as_it_is_asked() {
+        let runtime = Arc::new(FakeRuntime::default());
+        let limits = RunnerLimits::new(
+            Some(swarm_domain::CpuLimit::parse("2").unwrap()),
+            Some(swarm_domain::MemoryLimit::parse("4g").unwrap()),
+        );
+
+        let runner = service(&runtime)
+            .create(CreateRunner {
+                limits,
+                ..command("https://github.com/otsobide/mindweaver", "builder")
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(runner.definition().limits(), limits);
+        assert_eq!(
+            runtime.runner(runner.id()).unwrap().definition().limits(),
+            limits
+        );
+    }
+
+    #[tokio::test]
+    async fn gives_a_runners_jobs_the_engine_only_when_asked() {
+        let runtime = Arc::new(FakeRuntime::default());
+        let service = service(&runtime);
+
+        let isolated = service
+            .create(command(
+                "https://github.com/otsobide/mindweaver",
+                "isolated",
+            ))
+            .await
+            .unwrap();
+        let given = service
+            .create(CreateRunner {
+                engine_access: EngineAccess::Host,
+                ..command("https://github.com/otsobide/mindweaver", "given")
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            isolated.definition().engine_access(),
+            EngineAccess::Isolated
+        );
+        assert_eq!(given.definition().engine_access(), EngineAccess::Host);
     }
 
     #[tokio::test]
@@ -482,6 +551,39 @@ mod tests {
         service(&runtime).delete(runner.id()).await.unwrap();
 
         assert_eq!(runtime.runner(runner.id()), None);
+    }
+
+    #[tokio::test]
+    async fn reads_the_latest_lines_a_runner_logged() {
+        let runner = existing("https://github.com/otsobide/mindweaver", "builder");
+        let runtime = Arc::new(FakeRuntime::holding([runner.clone()]));
+        runtime.logged(
+            runner.id(),
+            [
+                "√ Connected to GitHub",
+                "Listening for Jobs",
+                "Running job: build",
+            ],
+        );
+
+        let lines = service(&runtime)
+            .logs(runner.id(), LogTail::new(2).unwrap())
+            .await
+            .unwrap();
+
+        let texts: Vec<&str> = lines.iter().map(LogLine::text).collect();
+        assert_eq!(texts, ["Listening for Jobs", "Running job: build"]);
+    }
+
+    #[tokio::test]
+    async fn says_when_there_is_no_runner_to_read_the_log_of() {
+        let runtime = Arc::new(FakeRuntime::default());
+
+        let read = service(&runtime)
+            .logs(RunnerId::generate(), LogTail::default())
+            .await;
+
+        assert!(matches!(read, Err(RunnerError::NotFound(_))));
     }
 
     #[tokio::test]

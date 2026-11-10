@@ -4,7 +4,9 @@
 //! the one place runners are kept: the runners listed are the containers
 //! there are.
 
+mod engine_socket;
 mod labels;
 mod runtime;
 
+pub use engine_socket::{EngineSocket, local_socket, socket_group};
 pub use runtime::DockerRuntime;

@@ -4,6 +4,7 @@ import { computed, nextTick, ref } from 'vue'
 import CreateRunnerPanel from './components/CreateRunnerPanel.vue'
 import FilterBar from './components/FilterBar.vue'
 import OwnerRack from './components/OwnerRack.vue'
+import RunnerLogs from './components/RunnerLogs.vue'
 import SwarmStrip from './components/SwarmStrip.vue'
 import type { RunnersGateway } from './core/gateway'
 import { groupByOwner, isFiltering, type Runner } from './core/runner'
@@ -43,6 +44,25 @@ async function closePanel() {
   creating.value = false
   await nextTick()
   newRunnerButton.value?.focus()
+}
+
+/** The runner whose logs are open, if any. */
+const viewing = ref<Runner | null>(null)
+
+function openLogs(runner: Runner) {
+  viewing.value = runner
+}
+
+/**
+ * Closes the logs, handing focus back to the Logs button of the runner's
+ * row, or to New runner if the runner is gone.
+ */
+async function closeLogs() {
+  const id = viewing.value?.id
+  viewing.value = null
+  await nextTick()
+  const button = document.querySelector<HTMLElement>(`[data-logs-of="${id}"]`) ?? newRunnerButton.value
+  button?.focus()
 }
 
 async function created(runner: Runner) {
@@ -104,11 +124,13 @@ async function created(runner: Runner) {
           @start="start"
           @stop="stop"
           @remove="remove"
+          @logs="openLogs"
         />
       </div>
     </main>
 
     <CreateRunnerPanel v-if="creating" :images="images" :create="create" @created="created" @close="closePanel" />
+    <RunnerLogs v-if="viewing" :runner="viewing" :gateway="gateway" @close="closeLogs" />
   </div>
 </template>
 

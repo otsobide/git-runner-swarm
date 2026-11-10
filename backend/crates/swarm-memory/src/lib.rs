@@ -9,7 +9,9 @@ use std::time::SystemTime;
 
 use async_trait::async_trait;
 use swarm_application::ports::{LaunchSpec, RunnerRuntime, RuntimeError};
-use swarm_domain::{ImageReference, Runner, RunnerDefinition, RunnerId, RunnerStatus};
+use swarm_domain::{
+    ImageReference, LogLine, LogTail, Runner, RunnerDefinition, RunnerId, RunnerStatus,
+};
 
 /// Runners kept in memory, and lost with it. A launched runner is running,
 /// a stopped one has exited with 0, and every image is there to pull.
@@ -99,6 +101,15 @@ impl RunnerRuntime for InMemoryRuntime {
             .map(drop)
             .ok_or(RuntimeError::NotFound(id))
     }
+
+    /// Nothing runs, so a runner has logged nothing.
+    async fn logs(&self, id: RunnerId, _tail: LogTail) -> Result<Vec<LogLine>, RuntimeError> {
+        if self.runners.lock().unwrap().contains_key(&id) {
+            Ok(Vec::new())
+        } else {
+            Err(RuntimeError::NotFound(id))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -136,6 +147,19 @@ mod tests {
         runtime.ensure_image(&image).await.unwrap();
 
         assert!(runtime.has_image(&image));
+    }
+
+    #[tokio::test]
+    async fn logs_nothing_as_nothing_runs() {
+        let runtime = InMemoryRuntime::new();
+        let definition = definition();
+        runtime.launch(&definition, &spec()).await.unwrap();
+
+        let logged = runtime.logs(definition.id(), LogTail::default()).await;
+        let unknown = runtime.logs(RunnerId::generate(), LogTail::default()).await;
+
+        assert_eq!(logged.unwrap(), []);
+        assert!(matches!(unknown, Err(RuntimeError::NotFound(_))));
     }
 
     #[tokio::test]

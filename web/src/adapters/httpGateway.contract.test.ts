@@ -32,6 +32,9 @@ function expectRunner(value: Runner) {
       'name',
       'labels',
       'lifecycle',
+      'cpus',
+      'memory',
+      'host_docker',
       'image',
       'status',
       'exit_code',
@@ -44,6 +47,9 @@ function expectRunner(value: Runner) {
   expect(value.repository === null || typeof value.repository === 'string').toBe(true)
   expect(value.labels.every((label) => typeof label === 'string')).toBe(true)
   expect(['persistent', 'ephemeral']).toContain(value.lifecycle)
+  expect(value.cpus === null || typeof value.cpus === 'string').toBe(true)
+  expect(value.memory === null || typeof value.memory === 'string').toBe(true)
+  expect(typeof value.host_docker).toBe('boolean')
   expect(['created', 'running', 'restarting', 'paused', 'exited', 'dead']).toContain(value.status)
   expect(value.exit_code === null || Number.isInteger(value.exit_code)).toBe(true)
   expect(Number.isInteger(value.created_at)).toBe(true)
@@ -96,6 +102,35 @@ describe.skipIf(api === undefined)('httpGateway against the API', () => {
     const runner = await create('owner-wide', { url: `https://github.com/${owner}`, lifecycle: 'ephemeral' })
 
     expect(runner).toMatchObject({ repository: null, scope: 'owner', lifecycle: 'ephemeral' })
+  })
+
+  it('creates a runner limited as asked, answering its limits as the panel reads them', async () => {
+    const runner = await create('limited', { cpus: '0.5', memory: '512m' })
+
+    expectRunner(runner)
+    expect(runner).toMatchObject({ cpus: '0.5', memory: '512m' })
+  })
+
+  it('creates a runner given the host’s Docker, answering that it is', async () => {
+    const given = await create('given-docker', { host_docker: true })
+    const isolated = await create('isolated')
+
+    expect(given.host_docker).toBe(true)
+    expect(isolated.host_docker).toBe(false)
+  })
+
+  it('reads a runner’s log in the shape the panel reads', async () => {
+    const runner = await create('logged')
+
+    const lines = await gateway.runnerLogs(runner.id, 50)
+
+    expect(Array.isArray(lines)).toBe(true)
+    expect(lines.length).toBeLessThanOrEqual(50)
+    for (const line of lines) {
+      expect(Object.keys(line).sort()).toEqual(['stream', 'text'])
+      expect(['stdout', 'stderr']).toContain(line.stream)
+      expect(typeof line.text).toBe('string')
+    }
   })
 
   it('stops and starts a runner, answering it in its new state', async () => {

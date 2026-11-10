@@ -1,5 +1,5 @@
 import { GatewayError, type RunnersGateway } from '../core/gateway'
-import type { NewRunner, Runner, RunnerFilters, RunnerImage } from '../core/runner'
+import { LOG_LINES, type LogLine, type NewRunner, type Runner, type RunnerFilters, type RunnerImage } from '../core/runner'
 
 /** A runner as the API would answer it, with whatever differs given. */
 export function aRunner(overrides: Partial<Runner> = {}): Runner {
@@ -13,6 +13,9 @@ export function aRunner(overrides: Partial<Runner> = {}): Runner {
     name: 'builder',
     labels: [],
     lifecycle: 'persistent',
+    cpus: null,
+    memory: null,
+    host_docker: false,
     image: 'ghcr.io/actions/actions-runner:latest',
     status: 'running',
     exit_code: null,
@@ -40,6 +43,8 @@ export class FakeGateway implements RunnersGateway {
   images: RunnerImage[] = [officialImage]
   calls: string[] = []
   failWith: GatewayError | null = null
+  /** What each runner has logged, by its id. */
+  logs: Record<string, LogLine[]> = {}
 
   constructor(runners: Runner[] = []) {
     this.runners = runners
@@ -72,6 +77,9 @@ export class FakeGateway implements RunnersGateway {
       scope: repository === null ? 'owner' : 'repository',
       labels: newRunner.labels,
       lifecycle: newRunner.lifecycle,
+      cpus: newRunner.cpus ?? null,
+      memory: newRunner.memory ?? null,
+      host_docker: newRunner.host_docker ?? false,
     })
     this.runners = [runner, ...this.runners]
     return copy(runner)
@@ -90,6 +98,12 @@ export class FakeGateway implements RunnersGateway {
   async deleteRunner(id: string): Promise<void> {
     this.record(`delete ${id}`)
     this.runners = this.runners.filter((runner) => runner.id !== id)
+  }
+
+  async runnerLogs(id: string, lines = LOG_LINES): Promise<LogLine[]> {
+    this.record(`logs ${id}`)
+    if (!this.runners.some((runner) => runner.id === id)) throw new GatewayError(`there is no runner ${id}`, 404, null)
+    return (this.logs[id] ?? []).slice(-lines).map((line) => ({ ...line }))
   }
 
   private record(call: string) {

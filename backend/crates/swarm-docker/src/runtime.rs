@@ -3,6 +3,7 @@ use std::time::SystemTime;
 
 use async_trait::async_trait;
 use bollard::Docker;
+use bollard::container::LogOutput;
 use bollard::errors::Error as DockerError;
 use bollard::models::{
     ContainerCreateBody, ContainerInspectResponse, ContainerStateStatusEnum, HostConfig,
@@ -10,13 +11,16 @@ use bollard::models::{
 };
 use bollard::query_parameters::{
     CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions,
-    RemoveContainerOptions, StartContainerOptions, StopContainerOptions,
+    LogsOptionsBuilder, RemoveContainerOptions, StartContainerOptions, StopContainerOptions,
 };
 use futures_util::StreamExt;
 use futures_util::future::join_all;
 use swarm_application::ports::{LaunchSpec, RestartPolicy, RunnerRuntime, RuntimeError};
-use swarm_domain::{ImageReference, Runner, RunnerDefinition, RunnerId, RunnerStatus};
+use swarm_domain::{
+    ImageReference, LogLine, LogStream, LogTail, Runner, RunnerDefinition, RunnerId, RunnerStatus,
+};
 
+use crate::engine_socket::EngineSocket;
 use crate::labels;
 
 /// What every runner's container is named, before its runner's id.
@@ -27,6 +31,7 @@ const CONTAINER_PREFIX: &str = "git-runner-swarm-";
 pub struct DockerRuntime {
     docker: Docker,
     stop_timeout: i32,
+    engine_socket: EngineSocket,
 }
 
 impl DockerRuntime {
@@ -53,6 +58,7 @@ impl DockerRuntime {
         Self {
             docker,
             stop_timeout: Self::DEFAULT_STOP_TIMEOUT,
+            engine_socket: EngineSocket::default(),
         }
     }
 
@@ -60,6 +66,14 @@ impl DockerRuntime {
     #[must_use]
     pub fn with_stop_timeout(mut self, seconds: i32) -> Self {
         self.stop_timeout = seconds;
+        self
+    }
+
+    /// The runtime, giving the jobs of runners that ask for the engine
+    /// `socket`: Docker's own socket, with no group to join, unless told.
+    #[must_use]
+    pub fn with_engine_socket(mut self, socket: EngineSocket) -> Self {
+        self.engine_socket = socket;
         self
     }
 
@@ -133,7 +147,10 @@ impl RunnerRuntime for DockerRuntime {
             ..CreateContainerOptions::default()
         };
         self.docker
-            .create_container(Some(options), container_body(runner, spec))
+            .create_container(
+                Some(options),
+                container_body(runner, spec, &self.engine_socket),
+            )
             .await
             .map_err(engine_error)?;
 
@@ -222,6 +239,45 @@ impl RunnerRuntime for DockerRuntime {
             .await
             .map_err(|error| runner_error(id, error))
     }
+
+    /// The container's latest lines, from both its outputs, in the order
+    /// they were written.
+    async fn logs(&self, id: RunnerId, tail: LogTail) -> Result<Vec<LogLine>, RuntimeError> {
+        let options = LogsOptionsBuilder::new()
+            .stdout(true)
+            .stderr(true)
+            .tail(&tail.lines().to_string())
+            .build();
+        let mut frames = self.docker.logs(&container_name(id), Some(options));
+        let mut lines = Vec::new();
+        while let Some(frame) = frames.next().await {
+            let (stream, message) = match frame.map_err(|error| runner_error(id, error))? {
+                LogOutput::StdOut { message } | LogOutput::Console { message } => {
+                    (LogStream::Out, message)
+                }
+                LogOutput::StdErr { message } => (LogStream::Err, message),
+                LogOutput::StdIn { .. } => continue,
+            };
+            lines.extend(lines_of(stream, &message));
+        }
+        let beyond = lines.len().saturating_sub(tail.lines() as usize);
+        lines.drain(..beyond);
+        Ok(lines)
+    }
+}
+
+/// The lines in what a container wrote at once, without their breaks: as
+/// text, any byte that is not UTF-8 replaced, and a trailing break ending
+/// the last line rather than starting an empty one.
+fn lines_of(stream: LogStream, written: &[u8]) -> Vec<LogLine> {
+    let text = String::from_utf8_lossy(written);
+    let text = text.strip_suffix('\n').unwrap_or(&text);
+    if text.is_empty() {
+        return Vec::new();
+    }
+    text.split('\n')
+        .map(|line| LogLine::new(stream, line.strip_suffix('\r').unwrap_or(line)))
+        .collect()
 }
 
 /// The name of the container a runner runs in.
@@ -230,9 +286,17 @@ pub(crate) fn container_name(id: RunnerId) -> String {
 }
 
 /// The container a runner runs in, as its launch spec says, with its
-/// definition in its labels. Docker's own init runs as PID 1, to reap what
-/// jobs leave behind and pass signals on to the runner.
-fn container_body(runner: &RunnerDefinition, spec: &LaunchSpec) -> ContainerCreateBody {
+/// definition in its labels, limited as the definition asks, and given the
+/// engine's `socket` (and its group) only if the definition asks for the
+/// engine. Docker's own init runs as PID 1, to reap what jobs leave behind
+/// and pass signals on to the runner.
+fn container_body(
+    runner: &RunnerDefinition,
+    spec: &LaunchSpec,
+    socket: &EngineSocket,
+) -> ContainerCreateBody {
+    let limits = runner.limits();
+    let engine = runner.engine_access().is_host();
     ContainerCreateBody {
         image: Some(spec.image.to_string()),
         cmd: (!spec.command.is_empty()).then(|| spec.command.clone()),
@@ -252,6 +316,17 @@ fn container_body(runner: &RunnerDefinition, spec: &LaunchSpec) -> ContainerCrea
                 }),
                 maximum_retry_count: None,
             }),
+            nano_cpus: limits
+                .cpus()
+                .map(|cpus| i64::from(cpus.millis()) * 1_000_000),
+            memory: limits
+                .memory()
+                .map(|memory| i64::try_from(memory.bytes()).unwrap_or(i64::MAX)),
+            binds: engine.then(|| vec![socket.bind()]),
+            group_add: socket
+                .group()
+                .filter(|_| engine)
+                .map(|group| vec![group.to_string()]),
             ..HostConfig::default()
         }),
         ..ContainerCreateBody::default()
@@ -370,7 +445,10 @@ fn unless_already_done(id: RunnerId, result: Result<(), DockerError>) -> Result<
 mod tests {
     use bollard::models::{ContainerConfig, ContainerState};
     use swarm_application::ports::EnvironmentVariable;
-    use swarm_domain::{Forge, RunnerLabels, RunnerLifecycle, RunnerName, RunnerScope};
+    use swarm_domain::{
+        CpuLimit, EngineAccess, Forge, MemoryLimit, RunnerLabels, RunnerLifecycle, RunnerLimits,
+        RunnerName, RunnerScope,
+    };
 
     use super::*;
 
@@ -432,7 +510,11 @@ mod tests {
     fn creates_the_container_as_the_spec_says() {
         let definition = definition();
 
-        let body = container_body(&definition, &spec(RestartPolicy::UnlessStopped));
+        let body = container_body(
+            &definition,
+            &spec(RestartPolicy::UnlessStopped),
+            &EngineSocket::default(),
+        );
 
         assert_eq!(
             body.image.as_deref(),
@@ -447,11 +529,116 @@ mod tests {
     }
 
     #[test]
+    fn limits_the_container_as_the_runner_asks() {
+        let definition = definition().with_limits(RunnerLimits::new(
+            Some(CpuLimit::parse("1.5").unwrap()),
+            Some(MemoryLimit::parse("512m").unwrap()),
+        ));
+
+        let host = container_body(
+            &definition,
+            &spec(RestartPolicy::Never),
+            &EngineSocket::default(),
+        )
+        .host_config
+        .unwrap();
+
+        assert_eq!(host.nano_cpus, Some(1_500_000_000));
+        assert_eq!(host.memory, Some(512 * 1024 * 1024));
+    }
+
+    #[test]
+    fn leaves_the_container_unlimited_unless_asked() {
+        let host = container_body(
+            &definition(),
+            &spec(RestartPolicy::Never),
+            &EngineSocket::default(),
+        )
+        .host_config
+        .unwrap();
+
+        assert_eq!(host.nano_cpus, None);
+        assert_eq!(host.memory, None);
+    }
+
+    #[test]
+    fn gives_the_engine_to_a_runner_that_asks_for_it() {
+        let definition = definition().with_engine_access(EngineAccess::Host);
+        let socket = EngineSocket::new("/var/run/docker.sock", Some(967));
+
+        let host = container_body(&definition, &spec(RestartPolicy::Never), &socket)
+            .host_config
+            .unwrap();
+
+        assert_eq!(
+            host.binds,
+            Some(vec!["/var/run/docker.sock:/var/run/docker.sock".to_owned()])
+        );
+        assert_eq!(host.group_add, Some(vec!["967".to_owned()]));
+    }
+
+    #[test]
+    fn mounts_the_engine_without_a_group_when_its_group_is_unknown() {
+        let definition = definition().with_engine_access(EngineAccess::Host);
+
+        let host = container_body(
+            &definition,
+            &spec(RestartPolicy::Never),
+            &EngineSocket::default(),
+        )
+        .host_config
+        .unwrap();
+
+        assert!(host.binds.is_some());
+        assert_eq!(host.group_add, None);
+    }
+
+    #[test]
+    fn gives_an_isolated_runner_no_engine() {
+        let socket = EngineSocket::new("/var/run/docker.sock", Some(967));
+
+        let host = container_body(&definition(), &spec(RestartPolicy::Never), &socket)
+            .host_config
+            .unwrap();
+
+        assert_eq!(host.binds, None);
+        assert_eq!(host.group_add, None);
+    }
+
+    #[test]
+    fn splits_what_a_container_wrote_into_lines() {
+        let lines = lines_of(LogStream::Err, b"first\r\nsecond\n\nfourth\n");
+
+        let texts: Vec<&str> = lines.iter().map(LogLine::text).collect();
+        assert_eq!(texts, ["first", "second", "", "fourth"]);
+        assert!(lines.iter().all(|line| line.stream() == LogStream::Err));
+    }
+
+    #[test]
+    fn keeps_a_line_written_without_a_break_and_nothing_of_nothing() {
+        let lines = lines_of(LogStream::Out, b"Listening for Jobs");
+
+        assert_eq!(lines, [LogLine::new(LogStream::Out, "Listening for Jobs")]);
+        assert_eq!(lines_of(LogStream::Out, b""), []);
+        assert_eq!(lines_of(LogStream::Out, b"\n"), []);
+    }
+
+    #[test]
+    fn reads_what_is_not_utf8_without_failing() {
+        let lines = lines_of(LogStream::Out, b"caf\xe9\n");
+
+        assert_eq!(lines[0].text(), "caf\u{fffd}");
+    }
+
+    #[test]
     fn runs_the_images_own_command_when_the_spec_gives_none() {
         let mut spec = spec(RestartPolicy::Never);
         spec.command.clear();
 
-        assert_eq!(container_body(&definition(), &spec).cmd, None);
+        assert_eq!(
+            container_body(&definition(), &spec, &EngineSocket::default()).cmd,
+            None
+        );
     }
 
     #[test]
@@ -463,7 +650,7 @@ mod tests {
             ),
             (RestartPolicy::Never, RestartPolicyNameEnum::NO),
         ] {
-            let host = container_body(&definition(), &spec(restart))
+            let host = container_body(&definition(), &spec(restart), &EngineSocket::default())
                 .host_config
                 .unwrap();
 

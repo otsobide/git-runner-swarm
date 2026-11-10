@@ -11,7 +11,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ created: [Runner]; close: [] }>()
 
-type Field = 'url' | 'token' | 'name' | 'labels' | 'lifecycle' | 'image'
+type Field = 'url' | 'token' | 'name' | 'labels' | 'lifecycle' | 'cpus' | 'memory' | 'image'
 
 /** The fields the API names, as it names them, and the inputs they are. */
 const fieldNamed: Record<string, Field> = {
@@ -20,6 +20,8 @@ const fieldNamed: Record<string, Field> = {
   'runner name': 'name',
   label: 'labels',
   lifecycle: 'lifecycle',
+  'CPU limit': 'cpus',
+  'memory limit': 'memory',
   image: 'image',
 }
 
@@ -29,6 +31,9 @@ const form = reactive({
   name: '',
   labels: '',
   lifecycle: 'persistent' as Lifecycle,
+  cpus: '',
+  memory: '',
+  hostDocker: false,
   image: props.images[0]?.key ?? '',
 })
 const fieldErrors = reactive<Partial<Record<Field, string>>>({})
@@ -46,14 +51,19 @@ async function submit() {
   formError.value = null
   for (const field of Object.keys(fieldErrors) as Field[]) delete fieldErrors[field]
   try {
-    const runner = await props.create({
+    const asked: NewRunner = {
       url: form.url,
       token: form.token,
       name: form.name,
       labels: form.labels.split(/[\s,]+/).filter((label) => label !== ''),
       lifecycle: form.lifecycle,
       image: form.image,
-    })
+    }
+    // A limit left blank is no limit.
+    if (form.cpus.trim() !== '') asked.cpus = form.cpus.trim()
+    if (form.memory.trim() !== '') asked.memory = form.memory.trim()
+    if (form.hostDocker) asked.host_docker = true
+    const runner = await props.create(asked)
     emit('created', runner)
   } catch (error) {
     const field = error instanceof GatewayError && error.field !== null ? fieldNamed[error.field] : undefined
@@ -179,6 +189,60 @@ function sentence(message: string): string {
           <p v-if="fieldErrors.lifecycle" class="error" role="alert">{{ fieldErrors.lifecycle }}</p>
         </fieldset>
 
+        <fieldset class="field" :aria-describedby="`${id}-limits-hint`">
+          <legend>Limits</legend>
+          <div class="pair">
+            <div class="part">
+              <label :for="`${id}-cpus`">CPUs</label>
+              <input
+                :id="`${id}-cpus`"
+                v-model="form.cpus"
+                type="text"
+                inputmode="decimal"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="No limit"
+                :aria-invalid="fieldErrors.cpus !== undefined"
+                :aria-describedby="`${id}-cpus-hint`"
+              />
+              <p :id="`${id}-cpus-hint`" class="hint">Such as 2 or 0.5.</p>
+            </div>
+            <div class="part">
+              <label :for="`${id}-memory`">Memory</label>
+              <input
+                :id="`${id}-memory`"
+                v-model="form.memory"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="No limit"
+                :aria-invalid="fieldErrors.memory !== undefined"
+                :aria-describedby="`${id}-memory-hint`"
+              />
+              <p :id="`${id}-memory-hint`" class="hint">Such as 4g or 512m.</p>
+            </div>
+          </div>
+          <p v-if="fieldErrors.cpus" class="error" role="alert">{{ fieldErrors.cpus }}</p>
+          <p v-if="fieldErrors.memory" class="error" role="alert">{{ fieldErrors.memory }}</p>
+          <p :id="`${id}-limits-hint`" class="hint">
+            What the runner and its jobs may use of this host. Left empty, they may use all of it.
+          </p>
+        </fieldset>
+
+        <fieldset class="field">
+          <legend>Docker</legend>
+          <label class="choice">
+            <input v-model="form.hostDocker" type="checkbox" :aria-describedby="`${id}-docker-hint`" />
+            <span>
+              <strong>Give its jobs this host’s Docker</strong>
+              <span :id="`${id}-docker-hint`" class="hint">
+                So they can build images and run containers. They then control this host as root does: only for
+                repositories whose every workflow you trust.
+              </span>
+            </span>
+          </label>
+        </fieldset>
+
         <div v-if="images.length > 1" class="field">
           <label :for="`${id}-image`">Image</label>
           <select :id="`${id}-image`" v-model="form.image" :aria-invalid="fieldErrors.image !== undefined">
@@ -290,6 +354,18 @@ select[aria-invalid='true'] {
 
 .choice > span {
   display: grid;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.part {
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
 }
 
 .buttons {

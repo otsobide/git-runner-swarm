@@ -9,8 +9,9 @@ use serde::{Deserialize, Serialize};
 use swarm_application::CreateRunner;
 use swarm_application::ports::RunnerImage;
 use swarm_domain::{
-    InvalidValue, OwnerName, RegistrationToken, RepositoryName, Runner, RunnerFilter, RunnerLabel,
-    RunnerLabels, RunnerLifecycle, RunnerName, RunnerScope,
+    CpuLimit, EngineAccess, InvalidValue, LogLine, LogTail, MemoryLimit, OwnerName,
+    RegistrationToken, RepositoryName, Runner, RunnerFilter, RunnerLabel, RunnerLabels,
+    RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope,
 };
 
 /// A runner, as the API answers it.
@@ -27,6 +28,12 @@ pub(crate) struct RunnerResponse {
     name: String,
     labels: Vec<String>,
     lifecycle: &'static str,
+    /// The most CPUs it may use, `1.5`; `null` for no limit.
+    cpus: Option<String>,
+    /// The most memory it may use, `4g`; `null` for no limit.
+    memory: Option<String>,
+    /// Whether its jobs are given the host's Docker.
+    host_docker: bool,
     image: String,
     status: &'static str,
     exit_code: Option<i64>,
@@ -52,6 +59,12 @@ impl From<&Runner> for RunnerResponse {
                 .map(ToString::to_string)
                 .collect(),
             lifecycle: definition.lifecycle().as_str(),
+            cpus: definition.limits().cpus().map(|cpus| cpus.to_string()),
+            memory: definition
+                .limits()
+                .memory()
+                .map(|memory| memory.to_string()),
+            host_docker: definition.engine_access().is_host(),
             image: runner.image().to_string(),
             status: runner.status().as_str(),
             exit_code: runner.exit_code(),
@@ -100,6 +113,15 @@ pub(crate) struct CreateRunnerRequest {
     /// `persistent`, unless `ephemeral` is asked for.
     #[serde(default)]
     lifecycle: Option<String>,
+    /// The most CPUs it may use, as a number or a string: `1.5`.
+    #[serde(default)]
+    cpus: Option<Cpus>,
+    /// The most memory it may use: `4g`, `512m`.
+    #[serde(default)]
+    memory: Option<String>,
+    /// Whether its jobs are given the host's Docker; not unless asked.
+    #[serde(default)]
+    host_docker: bool,
     /// The key of the image to create the runner from; the forge's default
     /// unless given.
     #[serde(default)]
@@ -108,6 +130,24 @@ pub(crate) struct CreateRunnerRequest {
 
 fn github() -> String {
     "github".to_owned()
+}
+
+/// A number of CPUs, as JSON gives it: a number (`1.5`), or a string
+/// (`"1.5"`), as a form sends it.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Cpus {
+    Number(serde_json::Number),
+    Text(String),
+}
+
+impl Cpus {
+    fn into_text(self) -> String {
+        match self {
+            Cpus::Number(number) => number.to_string(),
+            Cpus::Text(text) => text,
+        }
+    }
 }
 
 impl CreateRunnerRequest {
@@ -131,6 +171,19 @@ impl CreateRunnerRequest {
                 .map_or(Ok(RunnerLifecycle::default()), |lifecycle| {
                     lifecycle.parse()
                 })?,
+            limits: RunnerLimits::new(
+                present(self.cpus.map(Cpus::into_text))
+                    .map(|cpus| CpuLimit::parse(&cpus))
+                    .transpose()?,
+                present(self.memory)
+                    .map(|memory| MemoryLimit::parse(&memory))
+                    .transpose()?,
+            ),
+            engine_access: if self.host_docker {
+                EngineAccess::Host
+            } else {
+                EngineAccess::Isolated
+            },
             token: RegistrationToken::new(self.token)?,
             image: present(self.image),
         })
@@ -178,6 +231,47 @@ impl ListQuery {
             filter = filter.with_search(&text);
         }
         Ok(filter)
+    }
+}
+
+/// How much of a runner's log to read, as query parameters.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct LogsQuery {
+    /// How many of the latest lines; 200 unless given.
+    lines: Option<String>,
+}
+
+impl LogsQuery {
+    pub(crate) fn into_tail(self) -> Result<LogTail, InvalidValue> {
+        present(self.lines).map_or(Ok(LogTail::default()), |lines| LogTail::parse(&lines))
+    }
+}
+
+/// A runner's latest log lines, oldest first, as the API answers them.
+#[derive(Debug, Serialize)]
+pub(crate) struct LogsResponse {
+    lines: Vec<LogLineResponse>,
+}
+
+#[derive(Debug, Serialize)]
+struct LogLineResponse {
+    /// `stdout` or `stderr`.
+    stream: &'static str,
+    text: String,
+}
+
+impl From<&[LogLine]> for LogsResponse {
+    fn from(lines: &[LogLine]) -> Self {
+        Self {
+            lines: lines
+                .iter()
+                .map(|line| LogLineResponse {
+                    stream: line.stream().as_str(),
+                    text: line.text().to_owned(),
+                })
+                .collect(),
+        }
     }
 }
 
@@ -230,6 +324,8 @@ mod tests {
         assert_eq!(command.token.expose(), "AESOHC2S");
         assert!(command.labels.is_empty());
         assert_eq!(command.lifecycle, RunnerLifecycle::Persistent);
+        assert!(command.limits.is_none());
+        assert_eq!(command.engine_access, EngineAccess::Isolated);
         assert_eq!(command.image, None);
     }
 
@@ -242,6 +338,9 @@ mod tests {
             "token": "AESOHC2S",
             "labels": ["gpu", " large ", ""],
             "lifecycle": "ephemeral",
+            "cpus": "1.5",
+            "memory": "4g",
+            "host_docker": true,
             "image": "github-official",
         }))
         .into_command()
@@ -250,7 +349,29 @@ mod tests {
         assert_eq!(command.name.as_str(), "shared");
         assert_eq!(command.labels.to_comma_separated(), "gpu,large");
         assert_eq!(command.lifecycle, RunnerLifecycle::Ephemeral);
+        assert_eq!(command.limits.cpus().unwrap().millis(), 1500);
+        assert_eq!(command.limits.memory().unwrap().to_string(), "4g");
+        assert_eq!(command.engine_access, EngineAccess::Host);
         assert_eq!(command.image.as_deref(), Some("github-official"));
+    }
+
+    #[test]
+    fn reads_a_number_of_cpus_given_as_a_number() {
+        let mut body = minimal();
+        body["cpus"] = json!(0.5);
+
+        let limits = request(body).into_command().unwrap().limits;
+
+        assert_eq!(limits.cpus().unwrap().millis(), 500);
+    }
+
+    #[test]
+    fn takes_blank_limits_for_none() {
+        let mut body = minimal();
+        body["cpus"] = json!(" ");
+        body["memory"] = json!("");
+
+        assert!(request(body).into_command().unwrap().limits.is_none());
     }
 
     #[test]
@@ -270,6 +391,9 @@ mod tests {
             ("labels", json!(["gpu,large"]), "label"),
             ("lifecycle", json!("forever"), "lifecycle"),
             ("forge", json!("gitlab"), "forge"),
+            ("cpus", json!("lots"), "CPU limit"),
+            ("cpus", json!(-1), "CPU limit"),
+            ("memory", json!("4x"), "memory limit"),
         ] {
             let mut body = minimal();
             body[field] = value;
@@ -367,11 +491,81 @@ mod tests {
                 "name": "builder",
                 "labels": ["gpu", "large"],
                 "lifecycle": "ephemeral",
+                "cpus": null,
+                "memory": null,
+                "host_docker": false,
                 "image": "ghcr.io/actions/actions-runner:latest",
                 "status": "exited",
                 "exit_code": 1,
                 "created_at": 1_700_000_000,
             })
         );
+    }
+
+    #[test]
+    fn reads_how_many_log_lines_to_answer() {
+        let query = |body: Value| serde_json::from_value::<LogsQuery>(body).unwrap();
+
+        assert_eq!(query(json!({})).into_tail().unwrap(), LogTail::default());
+        assert_eq!(
+            query(json!({ "lines": " " })).into_tail().unwrap(),
+            LogTail::default()
+        );
+        assert_eq!(
+            query(json!({ "lines": "50" })).into_tail().unwrap().lines(),
+            50
+        );
+        assert_eq!(
+            query(json!({ "lines": "all" }))
+                .into_tail()
+                .unwrap_err()
+                .field(),
+            "lines"
+        );
+    }
+
+    #[test]
+    fn answers_log_lines_with_the_output_each_went_to() {
+        let lines = [
+            LogLine::new(swarm_domain::LogStream::Out, "Listening for Jobs"),
+            LogLine::new(swarm_domain::LogStream::Err, "Http response code: NotFound"),
+        ];
+
+        let answered = serde_json::to_value(LogsResponse::from(&lines[..])).unwrap();
+
+        assert_eq!(
+            answered,
+            json!({ "lines": [
+                { "stream": "stdout", "text": "Listening for Jobs" },
+                { "stream": "stderr", "text": "Http response code: NotFound" },
+            ] })
+        );
+    }
+
+    #[test]
+    fn answers_a_runners_limits_as_they_are_written() {
+        let definition = RunnerDefinition::new(
+            RunnerId::generate(),
+            Forge::GitHub,
+            RunnerScope::parse_url("https://github.com/otsobide").unwrap(),
+            RunnerName::new("builder").unwrap(),
+            RunnerLabels::default(),
+            RunnerLifecycle::Persistent,
+        )
+        .with_limits(RunnerLimits::new(
+            Some(CpuLimit::parse("0.50").unwrap()),
+            Some(MemoryLimit::parse("4096m").unwrap()),
+        ));
+        let runner = Runner::new(
+            definition,
+            ImageReference::new("ghcr.io/actions/actions-runner:latest").unwrap(),
+            RunnerStatus::Running,
+            UNIX_EPOCH,
+        );
+
+        let answered = serde_json::to_value(RunnerResponse::from(&runner)).unwrap();
+
+        assert_eq!(answered["cpus"], json!("0.5"));
+        assert_eq!(answered["memory"], json!("4g"));
     }
 }

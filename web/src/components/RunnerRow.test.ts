@@ -36,11 +36,33 @@ describe('RunnerRow', () => {
     expect(wrapper.find('.serves').text()).toBe('Every repository, one job at a time')
   })
 
+  it('says what a runner may use of its host, when it is limited', () => {
+    const limited = row(aRunner({ cpus: '2', memory: '4g' }))
+    const unlimited = row(aRunner())
+
+    expect(limited.find('.limits').text()).toBe('Up to 2 CPUs and 4 GiB of memory')
+    expect(unlimited.find('.limits').exists()).toBe(false)
+  })
+
+  it('says when a runner’s jobs use this host’s Docker', () => {
+    expect(row(aRunner({ host_docker: true })).find('.engine').text()).toBe('Its jobs use this host’s Docker')
+    expect(row(aRunner()).find('.engine').exists()).toBe(false)
+  })
+
+  it('opens the runner’s logs, whatever it is doing', async () => {
+    const runner = aRunner({ status: 'exited', exit_code: 1 })
+    const wrapper = row(runner, true)
+
+    await button(wrapper, 'Logs').trigger('click')
+
+    expect(wrapper.emitted('logs')).toEqual([[runner]])
+  })
+
   it('offers to stop a running runner', async () => {
     const runner = aRunner({ status: 'running' })
     const wrapper = row(runner)
 
-    expect(buttons(wrapper)).toEqual(['Stop', 'Delete'])
+    expect(buttons(wrapper)).toEqual(['Stop', 'Logs', 'Delete'])
     await button(wrapper, 'Stop').trigger('click')
     expect(wrapper.emitted('stop')).toEqual([[runner]])
   })
@@ -49,7 +71,7 @@ describe('RunnerRow', () => {
     const runner = aRunner({ status: 'exited', exit_code: 0 })
     const wrapper = row(runner)
 
-    expect(buttons(wrapper)).toEqual(['Start', 'Delete'])
+    expect(buttons(wrapper)).toEqual(['Start', 'Logs', 'Delete'])
     await button(wrapper, 'Start').trigger('click')
     expect(wrapper.emitted('start')).toEqual([[runner]])
   })
@@ -72,13 +94,14 @@ describe('RunnerRow', () => {
     await button(wrapper, 'Delete').trigger('click')
     await button(wrapper, 'Keep').trigger('click')
 
-    expect(buttons(wrapper)).toEqual(['Stop', 'Delete'])
+    expect(buttons(wrapper)).toEqual(['Stop', 'Logs', 'Delete'])
     expect(wrapper.emitted('remove')).toBeUndefined()
   })
 
-  it('offers nothing while something is being done to the runner', () => {
+  it('offers nothing but its logs while something is being done to the runner', () => {
     const wrapper = row(aRunner(), true)
 
-    expect(wrapper.findAll('button').every((button) => button.attributes('disabled') !== undefined)).toBe(true)
+    const enabled = wrapper.findAll('button').filter((button) => button.attributes('disabled') === undefined)
+    expect(enabled.map((button) => button.text())).toEqual(['Logs'])
   })
 })

@@ -18,6 +18,7 @@ loudly.
 | `POST /api/runners/{id}/start` | Starts a runner.                                 | `200`, a runner  |
 | `POST /api/runners/{id}/stop`  | Stops a runner.                                  | `200`, a runner  |
 | `DELETE /api/runners/{id}`     | Deletes a runner.                                | `204`, no body   |
+| `GET /api/runners/{id}/logs`   | The latest lines a runner logged.                | `200`            |
 
 ## A runner
 
@@ -32,6 +33,9 @@ loudly.
   "name": "gpu-1",
   "labels": ["gpu", "cuda"],
   "lifecycle": "persistent",
+  "cpus": "2",
+  "memory": "8g",
+  "host_docker": false,
   "image": "ghcr.io/actions/actions-runner:latest",
   "status": "running",
   "exit_code": null,
@@ -50,6 +54,9 @@ loudly.
 | `name`       | string          | What GitHub lists it as.                                                                            |
 | `labels`     | array of string | Its extra labels, beyond the ones GitHub gives every runner.                                        |
 | `lifecycle`  | string          | `persistent` (job after job) or `ephemeral` (one job).                                              |
+| `cpus`       | string or null  | The most CPUs it may use, `1.5`; `null` for no limit.                                               |
+| `memory`     | string or null  | The most memory it may use, in the largest whole unit, `4g` or `1536m`; `null` for no limit.        |
+| `host_docker`| boolean         | Whether its jobs are given the host's Docker.                                                       |
 | `image`      | string          | The image its container runs.                                                                       |
 | `status`     | string          | Its container's state: `created`, `running`, `restarting`, `paused`, `exited` or `dead`.            |
 | `exit_code`  | number or null  | What its container last exited with, while `exited`, `restarting` or `dead`; `null` otherwise.      |
@@ -122,6 +129,9 @@ curl 'http://localhost:8080/api/runners?owner=lumen-labs&label=gpu'
     "name": "gpu-1",
     "labels": ["gpu", "cuda"],
     "lifecycle": "persistent",
+    "cpus": "2",
+    "memory": "8g",
+    "host_docker": false,
     "image": "ghcr.io/actions/actions-runner:latest",
     "status": "running",
     "exit_code": null,
@@ -144,6 +154,9 @@ with GitHub happens in the container, after that.
 | `token`     | yes      | The registration token GitHub shows for that repository or organization.                      |
 | `labels`    | no       | Extra labels: each 1–100 letters, digits, `-`, `_` or `.`. Empty ones are dropped.              |
 | `lifecycle` | no       | `persistent` (the default) or `ephemeral`.                                                     |
+| `cpus`      | no       | The most CPUs it may use: a number or a string, from `0.01` to `1024`, to a thousandth.        |
+| `memory`    | no       | The most memory it may use: `512m`, `4g`, `1.5g` (`k`, `m`, `g`, `t`, or bytes); at least 6 MiB. |
+| `host_docker` | no     | `true` to give its jobs the host's Docker (see [security.md](security.md)); `false` by default. |
 | `image`     | no       | The `key` of an image from `GET /api/images`; the forge's default if left out or empty.        |
 | `forge`     | no       | `github` (the default).                                                                        |
 
@@ -158,7 +171,9 @@ curl -X POST http://localhost:8080/api/runners \
         "url": "https://github.com/lumen-labs/inference",
         "name": "gpu-1",
         "token": "<registration token>",
-        "labels": ["gpu", "cuda"]
+        "labels": ["gpu", "cuda"],
+        "cpus": 2,
+        "memory": "8g"
       }'
 ```
 
@@ -183,6 +198,30 @@ answers `204 No Content`. GitHub keeps listing the runner, offline,
 until it drops it or it is removed under the repository's or
 organization's **Settings › Actions › Runners**.
 
+## `GET /api/runners/{id}/logs`
+
+The latest lines the runner's container wrote, oldest first: the runner
+registering and connecting, and the jobs it runs. `lines` says how many,
+from 1 to 5000, 200 unless given. Each line says which output it was
+written to.
+
+```sh
+curl 'http://localhost:8080/api/runners/9cf4fc44-2ce1-4c75-a246-5c95f620ded3/logs?lines=3'
+```
+
+```json
+{
+  "lines": [
+    {"stream": "stdout", "text": "√ Connected to GitHub"},
+    {"stream": "stdout", "text": "Current runner version: '2.338.2'"},
+    {"stream": "stdout", "text": "2026-11-10 07:07:20Z: Listening for Jobs"}
+  ]
+}
+```
+
+Lines written to both outputs within the same instant may come in
+either order: Docker logs each output on its own.
+
 ## Errors
 
 Every failure is answered with a status and a body saying why:
@@ -193,8 +232,8 @@ Every failure is answered with a status and a body saying why:
 
 `field` is there when a single value is to blame, named as the domain
 names it: `URL`, `owner` or `repository` (a part of the URL), `runner
-name`, `registration token`, `label`, `lifecycle`, `image`, `forge`,
-`scope` or `status`.
+name`, `registration token`, `label`, `lifecycle`, `CPU limit`,
+`memory limit`, `image`, `forge`, `scope`, `status` or `lines`.
 
 | Status | When                                                                                        |
 | ------ | ------------------------------------------------------------------------------------------- |

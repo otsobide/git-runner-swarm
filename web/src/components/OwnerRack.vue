@@ -5,7 +5,7 @@ import type { OwnerGroup, Runner } from '../core/runner'
 import RunnerRow from './RunnerRow.vue'
 
 const props = defineProps<{ group: OwnerGroup; busy: ReadonlySet<string> }>()
-const emit = defineEmits<{ start: [Runner]; stop: [Runner]; remove: [Runner] }>()
+const emit = defineEmits<{ start: [Runner]; stop: [Runner]; remove: [Runner]; logs: [Runner] }>()
 
 const count = computed(() => {
   const runners = props.group.runners.length
@@ -32,6 +32,7 @@ const onOtherForge = computed(() => props.group.host !== 'github.com')
         @start="emit('start', $event)"
         @stop="emit('stop', $event)"
         @remove="emit('remove', $event)"
+        @logs="emit('logs', $event)"
       />
     </ul>
   </section>

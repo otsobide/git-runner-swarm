@@ -14,9 +14,10 @@ use bollard::query_parameters::InspectContainerOptions;
 use swarm_application::ports::{
     EnvironmentVariable, LaunchSpec, RestartPolicy, RunnerRuntime, RuntimeError,
 };
-use swarm_docker::DockerRuntime;
+use swarm_docker::{DockerRuntime, EngineSocket};
 use swarm_domain::{
-    Forge, ImageReference, RunnerDefinition, RunnerId, RunnerLabels, RunnerLifecycle, RunnerName,
+    CpuLimit, EngineAccess, Forge, ImageReference, LogLine, LogStream, LogTail, MemoryLimit,
+    RunnerDefinition, RunnerId, RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName,
     RunnerScope, RunnerStatus,
 };
 
@@ -142,6 +143,131 @@ async fn starts_the_container_as_the_spec_says() {
         host.restart_policy.unwrap().name,
         Some(RestartPolicyNameEnum::UNLESS_STOPPED)
     );
+}
+
+#[tokio::test]
+#[ignore = "needs a Docker engine; run with --include-ignored"]
+async fn limits_the_container_as_the_runner_asks_and_reads_the_limits_back() {
+    let runtime = runtime();
+    let limits = RunnerLimits::new(
+        Some(CpuLimit::parse("0.5").unwrap()),
+        Some(MemoryLimit::parse("64m").unwrap()),
+    );
+    let definition = definition("limited").with_limits(limits);
+    let _removed = Removed(definition.id());
+    runtime
+        .ensure_image(&ImageReference::new(IMAGE).unwrap())
+        .await
+        .unwrap();
+    runtime.launch(&definition, &sleeping()).await.unwrap();
+
+    let host = Docker::connect_with_defaults()
+        .unwrap()
+        .inspect_container(
+            &format!("git-runner-swarm-{}", definition.id()),
+            None::<InspectContainerOptions>,
+        )
+        .await
+        .unwrap()
+        .host_config
+        .unwrap();
+
+    assert_eq!(host.nano_cpus, Some(500_000_000));
+    assert_eq!(host.memory, Some(64 * 1024 * 1024));
+    let found = runtime.find(definition.id()).await.unwrap().unwrap();
+    assert_eq!(found.definition().limits(), limits);
+}
+
+#[tokio::test]
+#[ignore = "needs a Docker engine; run with --include-ignored"]
+async fn gives_the_engine_to_a_runner_that_asks_for_it() {
+    let runtime =
+        runtime().with_engine_socket(EngineSocket::new("/var/run/docker.sock", Some(4242)));
+    let definition = definition("given-the-engine").with_engine_access(EngineAccess::Host);
+    let _removed = Removed(definition.id());
+    runtime
+        .ensure_image(&ImageReference::new(IMAGE).unwrap())
+        .await
+        .unwrap();
+    runtime.launch(&definition, &sleeping()).await.unwrap();
+
+    let host = Docker::connect_with_defaults()
+        .unwrap()
+        .inspect_container(
+            &format!("git-runner-swarm-{}", definition.id()),
+            None::<InspectContainerOptions>,
+        )
+        .await
+        .unwrap()
+        .host_config
+        .unwrap();
+
+    assert_eq!(
+        host.binds,
+        Some(vec!["/var/run/docker.sock:/var/run/docker.sock".to_owned()])
+    );
+    assert_eq!(host.group_add, Some(vec!["4242".to_owned()]));
+    let found = runtime.find(definition.id()).await.unwrap().unwrap();
+    assert_eq!(found.definition().engine_access(), EngineAccess::Host);
+}
+
+#[tokio::test]
+#[ignore = "needs a Docker engine; run with --include-ignored"]
+async fn reads_the_latest_lines_a_runner_logged() {
+    let runtime = runtime();
+    let definition = definition("logging");
+    let _removed = Removed(definition.id());
+    let mut spec = sleeping();
+    // Docker logs each output on its own, so lines written to both at
+    // once may be logged in either order: a second apart, they are not.
+    spec.command = [
+        "sh",
+        "-c",
+        "echo oops >&2; sleep 1; echo one; echo two; exec sleep 300",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    runtime
+        .ensure_image(&ImageReference::new(IMAGE).unwrap())
+        .await
+        .unwrap();
+    runtime.launch(&definition, &spec).await.unwrap();
+
+    let mut written = Vec::new();
+    for _ in 0..50 {
+        written = runtime
+            .logs(definition.id(), LogTail::new(3).unwrap())
+            .await
+            .unwrap();
+        if written.len() == 3 {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let latest = runtime
+        .logs(definition.id(), LogTail::new(2).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        written,
+        [
+            LogLine::new(LogStream::Err, "oops"),
+            LogLine::new(LogStream::Out, "one"),
+            LogLine::new(LogStream::Out, "two"),
+        ]
+    );
+    assert_eq!(
+        latest,
+        [
+            LogLine::new(LogStream::Out, "one"),
+            LogLine::new(LogStream::Out, "two"),
+        ]
+    );
+    assert!(matches!(
+        runtime.logs(RunnerId::generate(), LogTail::default()).await,
+        Err(RuntimeError::NotFound(_))
+    ));
 }
 
 #[tokio::test]

@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { expect, type Page, test } from '@playwright/test'
 
 import { here } from '../support'
-import { sampleImages, sampleRunners } from './sample'
+import { sampleImages, sampleLog, sampleRunners } from './sample'
 
 const folder = join(here, '..', 'docs', 'images')
 
@@ -21,6 +21,10 @@ async function showSamples(page: Page): Promise<void> {
   await page.route(
     (url) => url.pathname === '/api/images',
     (route) => route.fulfill({ json: sampleImages }),
+  )
+  await page.route(
+    (url) => /^\/api\/runners\/[^/]+\/logs$/.test(url.pathname),
+    (route) => route.fulfill({ json: { lines: sampleLog } }),
   )
 }
 
@@ -41,7 +45,7 @@ test.describe('on a desktop', () => {
 
   test('creating a runner', async ({ page }) => {
     // Tall enough for the whole form, down to its buttons.
-    await page.setViewportSize({ width: 1280, height: 940 })
+    await page.setViewportSize({ width: 1280, height: 1280 })
     await openPanel(page)
     await page.getByRole('button', { name: 'New runner' }).click()
     const dialog = page.getByRole('dialog', { name: 'New runner' })
@@ -51,6 +55,14 @@ test.describe('on a desktop', () => {
     await dialog.getByLabel('Labels').fill('gpu, cuda')
     await dialog.getByLabel('Labels').blur()
     await page.screenshot({ path: join(folder, 'new-runner.png'), animations: 'disabled' })
+  })
+
+  test('a runner’s logs', async ({ page }) => {
+    await openPanel(page)
+    const gpu = page.locator('li.row', { has: page.getByRole('heading', { level: 3, name: 'gpu-1' }) })
+    await gpu.getByRole('button', { name: 'Logs' }).click()
+    await expect(page.getByRole('dialog', { name: 'Logs of gpu-1' }).getByText('Job evaluate completed')).toBeVisible()
+    await page.screenshot({ path: join(folder, 'runner-logs.png'), animations: 'disabled' })
   })
 })
 

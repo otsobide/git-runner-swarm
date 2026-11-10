@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use swarm_domain::{ImageReference, Runner, RunnerDefinition, RunnerId};
+use swarm_domain::{ImageReference, LogLine, LogTail, Runner, RunnerDefinition, RunnerId};
 use thiserror::Error;
 
 use crate::ports::LaunchSpec;
@@ -40,6 +40,9 @@ pub trait RunnerRuntime: Send + Sync {
 
     /// Removes a runner's container, stopping it first if it runs.
     async fn remove(&self, id: RunnerId) -> Result<(), RuntimeError>;
+    /// The latest lines a runner's container logged, as many as `tail`
+    /// says at most, oldest first.
+    async fn logs(&self, id: RunnerId, tail: LogTail) -> Result<Vec<LogLine>, RuntimeError>;
 }
 
 /// Why a runtime could not do what it was asked.

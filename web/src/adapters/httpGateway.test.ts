@@ -75,6 +75,27 @@ describe('httpGateway', () => {
     expect(calls[0]?.body).toEqual(newRunner)
   })
 
+  it('sends the limits given, and leaves out those left blank', async () => {
+    const { gateway: api, calls } = gateway(() => json({ id: '1' }, 201))
+
+    await api.createRunner({ ...newRunner, cpus: '1.5', memory: ' ' })
+
+    expect(calls[0]?.body).toEqual({ ...newRunner, cpus: '1.5' })
+  })
+
+  it('reads a runner’s latest log lines, as many as the panel shows unless told', async () => {
+    const lines = [{ stream: 'stdout', text: 'Listening for Jobs' }]
+    const { gateway: api, calls } = gateway(() => json({ lines }))
+
+    expect(await api.runnerLogs('a/b')).toEqual(lines)
+    await api.runnerLogs('a/b', 10)
+
+    expect(calls.map((call) => call.url)).toEqual([
+      '/api/runners/a%2Fb/logs?lines=200',
+      '/api/runners/a%2Fb/logs?lines=10',
+    ])
+  })
+
   it('starts, stops and deletes a runner at its own path', async () => {
     const { gateway: api, calls } = gateway(() => json({ id: 'a/b' }))
 

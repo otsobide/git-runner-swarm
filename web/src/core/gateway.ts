@@ -1,4 +1,4 @@
-import type { NewRunner, Runner, RunnerFilters, RunnerImage } from './runner'
+import type { LogLine, NewRunner, Runner, RunnerFilters, RunnerImage } from './runner'
 
 /**
  * Where the panel gets runners from, and sends what is done to them: the
@@ -12,6 +12,8 @@ export interface RunnersGateway {
   startRunner(id: string): Promise<Runner>
   stopRunner(id: string): Promise<Runner>
   deleteRunner(id: string): Promise<void>
+  /** The latest lines a runner logged, oldest first, `lines` of them at most. */
+  runnerLogs(id: string, lines?: number): Promise<LogLine[]>
 }
 
 /**
@@ -29,4 +31,11 @@ export class GatewayError extends Error {
     this.status = status
     this.field = field
   }
+}
+
+/** Whatever was thrown, as a GatewayError: one never answered, unless it is one. */
+export function asGatewayError(error: unknown): GatewayError {
+  return error instanceof GatewayError
+    ? error
+    : new GatewayError(error instanceof Error ? error.message : String(error), null, null)
 }

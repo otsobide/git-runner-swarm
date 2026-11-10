@@ -1,4 +1,7 @@
-use crate::{Forge, RunnerId, RunnerLabels, RunnerLifecycle, RunnerName, RunnerScope};
+use crate::{
+    EngineAccess, Forge, RunnerId, RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName,
+    RunnerScope,
+};
 
 /// What a runner is asked to be when it is created: everything about it
 /// that stays the same for as long as it exists.
@@ -10,6 +13,8 @@ pub struct RunnerDefinition {
     name: RunnerName,
     labels: RunnerLabels,
     lifecycle: RunnerLifecycle,
+    limits: RunnerLimits,
+    engine_access: EngineAccess,
 }
 
 impl RunnerDefinition {
@@ -28,7 +33,23 @@ impl RunnerDefinition {
             name,
             labels,
             lifecycle,
+            limits: RunnerLimits::none(),
+            engine_access: EngineAccess::Isolated,
         }
+    }
+
+    /// The same runner, limited to `limits` of its host.
+    #[must_use]
+    pub fn with_limits(mut self, limits: RunnerLimits) -> Self {
+        self.limits = limits;
+        self
+    }
+
+    /// The same runner, its jobs given `access` to the engine it runs on.
+    #[must_use]
+    pub fn with_engine_access(mut self, access: EngineAccess) -> Self {
+        self.engine_access = access;
+        self
     }
 
     pub fn id(&self) -> RunnerId {
@@ -53,6 +74,16 @@ impl RunnerDefinition {
 
     pub fn lifecycle(&self) -> RunnerLifecycle {
         self.lifecycle
+    }
+
+    /// What it may use of its host; nothing is limited unless asked.
+    pub fn limits(&self) -> RunnerLimits {
+        self.limits
+    }
+
+    /// Whether its jobs may use the engine it runs on; never, unless asked.
+    pub fn engine_access(&self) -> EngineAccess {
+        self.engine_access
     }
 
     /// Whether `other` is another runner that would register under this
@@ -88,6 +119,39 @@ mod tests {
 
         assert!(first.conflicts_with(&second));
         assert!(second.conflicts_with(&first));
+    }
+
+    #[test]
+    fn limits_nothing_unless_told_to() {
+        let runner = definition("https://github.com/otsobide/mindweaver", "builder");
+
+        assert!(runner.limits().is_none());
+    }
+
+    #[test]
+    fn keeps_the_limits_it_is_given() {
+        let limits = RunnerLimits::new(
+            Some(crate::CpuLimit::parse("1.5").unwrap()),
+            Some(crate::MemoryLimit::parse("4g").unwrap()),
+        );
+
+        let runner =
+            definition("https://github.com/otsobide/mindweaver", "builder").with_limits(limits);
+
+        assert_eq!(runner.limits(), limits);
+    }
+
+    #[test]
+    fn gives_its_jobs_no_engine_unless_told_to() {
+        let runner = definition("https://github.com/otsobide/mindweaver", "builder");
+
+        assert_eq!(runner.engine_access(), EngineAccess::Isolated);
+        assert_eq!(
+            runner
+                .with_engine_access(EngineAccess::Host)
+                .engine_access(),
+            EngineAccess::Host
+        );
     }
 
     #[test]

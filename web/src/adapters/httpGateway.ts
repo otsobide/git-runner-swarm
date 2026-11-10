@@ -1,5 +1,13 @@
 import { GatewayError, type RunnersGateway } from '../core/gateway'
-import { type NewRunner, type Runner, type RunnerFilters, type RunnerImage, toQuery } from '../core/runner'
+import {
+  LOG_LINES,
+  type LogLine,
+  type NewRunner,
+  type Runner,
+  type RunnerFilters,
+  type RunnerImage,
+  toQuery,
+} from '../core/runner'
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>
 
@@ -48,8 +56,9 @@ export function httpGateway(
     },
 
     createRunner(newRunner: NewRunner) {
-      const { image, ...rest } = newRunner
-      const body = image === undefined || image === '' ? rest : newRunner
+      // What was left blank is left out, for the API's default.
+      const { image, cpus, memory, ...rest } = newRunner
+      const body = { ...rest, ...given({ cpus, memory, image }) }
       return request<Runner>('/runners', { method: 'POST', body: JSON.stringify(body) })
     },
 
@@ -64,7 +73,19 @@ export function httpGateway(
     deleteRunner(id) {
       return request<void>(runner(id), { method: 'DELETE' })
     },
+
+    async runnerLogs(id, lines = LOG_LINES) {
+      const answer = await request<{ lines: LogLine[] }>(`${runner(id)}/logs?lines=${lines}`)
+      return answer.lines
+    },
   }
+}
+
+/** The fields given a value that is not blank. */
+function given(fields: Record<string, string | undefined>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(fields).filter((field): field is [string, string] => (field[1] ?? '').trim() !== ''),
+  )
 }
 
 function isErrorBody(body: unknown): body is { error?: string; field?: string } {

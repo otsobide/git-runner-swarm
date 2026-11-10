@@ -120,6 +120,35 @@ describe('the panel', () => {
     expect(racks(wrapper)[0]).toEqual({ owner: 'acme', runners: ['tester', 'deployer'] })
   })
 
+  it('creates a limited runner, and shows its limits in its row', async () => {
+    const wrapper = await open(fleet())
+
+    await clickButton(wrapper, 'New runner')
+    await wrapper.find('input[type="url"]').setValue('https://github.com/acme/site')
+    await wrapper.find('input[type="password"]').setValue('AESOHC2S')
+    await wrapper.findAll('[role="dialog"] input[type="text"]')[0]!.setValue('small')
+    await select(wrapper, 'CPUs').setValue('0.5')
+    await select(wrapper, 'Memory').setValue('512m')
+    await wrapper.find('[role="dialog"] form').trigger('submit')
+    await flushPromises()
+
+    expect(rowOf(wrapper, 'small').textContent).toContain('Up to 0.5 CPUs and 512 MiB of memory')
+  })
+
+  it('creates a runner given this host’s Docker, and says so in its row', async () => {
+    const wrapper = await open(fleet())
+
+    await clickButton(wrapper, 'New runner')
+    await wrapper.find('input[type="url"]').setValue('https://github.com/acme/site')
+    await wrapper.find('input[type="password"]').setValue('AESOHC2S')
+    await wrapper.findAll('[role="dialog"] input[type="text"]')[0]!.setValue('image-builder')
+    await wrapper.find('[role="dialog"] input[type="checkbox"]').setValue(true)
+    await wrapper.find('[role="dialog"] form').trigger('submit')
+    await flushPromises()
+
+    expect(rowOf(wrapper, 'image-builder').textContent).toContain('Its jobs use this host’s Docker')
+  })
+
   it('keeps what was typed when the API refuses a value, and points at it', async () => {
     const gateway = fleet()
     const wrapper = await open(gateway)
@@ -152,6 +181,25 @@ describe('the panel', () => {
 
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
     expect(document.activeElement?.textContent?.trim()).toBe('New runner')
+  })
+
+  it('opens a runner’s logs from its row, and hands focus back when they close', async () => {
+    const gateway = fleet()
+    const builder = gateway.runners.find((runner) => runner.name === 'builder')!
+    gateway.logs[builder.id] = [{ stream: 'stdout', text: 'Listening for Jobs' }]
+    const wrapper = await open(gateway)
+
+    await clickButton(wrapper, 'Logs', rowOf(wrapper, 'builder'))
+    const dialog = wrapper.find('[role="dialog"]')
+    expect(dialog.find('h2').text()).toBe('Logs of builder')
+    expect(dialog.find('pre').text()).toBe('Listening for Jobs')
+
+    await dialog.trigger('keydown', { key: 'Escape' })
+    await flushPromises()
+
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    expect(document.activeElement?.textContent?.trim()).toBe('Logs')
+    expect(rowOf(wrapper, 'builder').contains(document.activeElement)).toBe(true)
   })
 
   describe('kept current', () => {

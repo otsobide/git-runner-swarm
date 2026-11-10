@@ -333,7 +333,16 @@ The `Dockerfile` has three stages: Node builds the web panel, Rust
 builds the server (with Cargo's registry and target directory as build
 caches), and both land in `gcr.io/distroless/cc-debian13`, which holds
 the C runtime the binary needs and nothing else: no shell, no package
-manager. The image is about 54 MB. It runs as root, because reaching the
+manager. The image is about 54 MB.
+
+It is built for linux/amd64 and linux/arm64. The two build stages run on
+the platform doing the build, whichever the image is for: the web panel
+is the same files on every platform, and the server is cross-compiled
+for the image's (`--target`, with a cross linker; no dependency compiles
+C). Only the last stage, which runs nothing, is of the image's platform,
+so building for arm64 on amd64 emulates nothing and takes as long as
+building for amd64. Releases are published to Docker Hub by the
+`release` workflow (see [development.md](development.md#releasing)). It runs as root, because reaching the
 Docker socket requires it, and the socket is root on the host either
 way (see [security.md](security.md)).
 

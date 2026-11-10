@@ -17,32 +17,36 @@ quick start, see the [README](../README.md); for the settings, see
 
 ## Running the panel
 
-The panel needs a Linux host with Docker, and is built from this
-repository:
+The panel needs a Linux host with Docker, on amd64 or arm64. Its image
+is published on Docker Hub as
+[`otsobide/git-runner-swarm`](https://hub.docker.com/r/otsobide/git-runner-swarm),
+tagged with each version (`0.2.1`), each minor version's latest (`0.2`)
+and `latest`.
+
+With this repository's [`compose.yaml`](../compose.yaml), in the
+directory it is in:
 
 ```sh
-git clone https://github.com/otsobide/git-runner-swarm.git
-cd git-runner-swarm
 docker compose up -d
 ```
 
-The first build takes a few minutes. Then open <http://localhost:8080>.
-
-The compose file publishes the panel on `127.0.0.1` only, mounts the
-host's Docker socket, and restarts the panel with Docker
-(`restart: unless-stopped`). Anyone who can reach the panel controls the
-host's Docker, so read [security.md](security.md) before making it
-reachable from anywhere else.
+Then open <http://localhost:8080>. The compose file publishes the panel
+on `127.0.0.1` only, mounts the host's Docker socket, and restarts the
+panel with Docker (`restart: unless-stopped`). Anyone who can reach the
+panel controls the host's Docker, so read [security.md](security.md)
+before making it reachable from anywhere else.
 
 Without Compose, the same thing is:
 
 ```sh
-docker build -t git-runner-swarm .
 docker run -d --name git-runner-swarm --restart unless-stopped \
   -p 127.0.0.1:8080:8080 \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  git-runner-swarm
+  otsobide/git-runner-swarm
 ```
+
+To run the panel built from this repository instead, build it under the
+same name first: `docker build -t otsobide/git-runner-swarm .`.
 
 To try the panel without touching Docker, run it with
 `GRS_RUNTIME=memory`: runners are then kept in memory, nothing runs,
@@ -51,10 +55,12 @@ and everything is forgotten when the panel stops.
 ### Upgrading and stopping it
 
 ```sh
-git pull
-docker compose up -d --build   # upgrade
-docker compose down            # stop it, and keep it from starting with Docker
+docker compose pull && docker compose up -d   # upgrade to the latest release
+docker compose down                            # stop it, and keep it from starting with Docker
 ```
+
+To upgrade only when you choose to, pin a version in `compose.yaml`
+(`otsobide/git-runner-swarm:0.2`) and change it when you do.
 
 Neither touches the runners: they are containers of their own, and keep
 running while the panel is down. A new panel finds them again (see

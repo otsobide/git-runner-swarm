@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use swarm_application::ports::{RunnerImage, RunnerRuntime};
 use swarm_application::{RunnerImages, RunnerService};
-use swarm_docker::DockerRuntime;
+use swarm_docker::{DockerRuntime, EngineSocket, local_socket, socket_group};
 use swarm_github::GitHubOfficialImage;
 use swarm_memory::InMemoryRuntime;
 use tokio::net::TcpListener;
@@ -77,7 +77,9 @@ async fn run() -> Result<(), Box<dyn Error>> {
 async fn runtime(config: &Config) -> Result<Arc<dyn RunnerRuntime>, Box<dyn Error>> {
     match config.runtime {
         RuntimeKind::Docker => {
-            let docker = DockerRuntime::connect()?.with_stop_timeout(config.stop_timeout);
+            let docker = DockerRuntime::connect()?
+                .with_stop_timeout(config.stop_timeout)
+                .with_engine_socket(engine_socket(config));
             docker.ping().await.map_err(|error| {
                 format!("{error}; is the Docker socket mounted into the panel's container?")
             })?;
@@ -91,6 +93,28 @@ async fn runtime(config: &Config) -> Result<Arc<dyn RunnerRuntime>, Box<dyn Erro
             Ok(Arc::new(InMemoryRuntime::new()))
         }
     }
+}
+
+/// The engine's socket as runners given Docker get it: the path on the
+/// host the configuration says, and the group owning the socket this
+/// panel reaches the engine at, which is the same socket when the panel
+/// is given the host's, as `compose.yaml` gives it.
+fn engine_socket(config: &Config) -> EngineSocket {
+    let group = local_socket(std::env::var("DOCKER_HOST").ok().as_deref())
+        .and_then(|path| socket_group(&path));
+    if let Some(group) = group {
+        tracing::info!(
+            socket = config.runner_docker_socket,
+            group,
+            "runners given Docker mount its socket and join its group"
+        );
+    } else {
+        tracing::warn!(
+            socket = config.runner_docker_socket,
+            "the group of Docker's socket is unknown: runners given Docker may be refused its use"
+        );
+    }
+    EngineSocket::new(config.runner_docker_socket.clone(), group)
 }
 
 /// The images runners can be created from, each forge's default first.

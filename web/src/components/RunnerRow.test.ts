@@ -44,6 +44,11 @@ describe('RunnerRow', () => {
     expect(unlimited.find('.limits').exists()).toBe(false)
   })
 
+  it('says when a runner’s jobs use this host’s Docker', () => {
+    expect(row(aRunner({ host_docker: true })).find('.engine').text()).toBe('Its jobs use this host’s Docker')
+    expect(row(aRunner()).find('.engine').exists()).toBe(false)
+  })
+
   it('offers to stop a running runner', async () => {
     const runner = aRunner({ status: 'running' })
     const wrapper = row(runner)

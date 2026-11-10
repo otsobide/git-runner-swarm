@@ -87,6 +87,25 @@ describe('CreateRunnerPanel', () => {
     wrapper.unmount()
   })
 
+  it('gives the runner’s jobs this host’s Docker only when asked', async () => {
+    const asked: NewRunner[] = []
+    const wrapper = panel(async (runner) => {
+      asked.push(runner)
+      return aRunner()
+    })
+
+    await fill(wrapper)
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    await wrapper.find('input[type="checkbox"]').setValue(true)
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(asked[0]).not.toHaveProperty('host_docker')
+    expect(asked[1]).toMatchObject({ host_docker: true })
+    wrapper.unmount()
+  })
+
   it('points at a limit the API refused', async () => {
     const wrapper = panel(() =>
       Promise.reject(new GatewayError('invalid memory limit: it is less than the 6 MiB allowed', 422, 'memory limit')),

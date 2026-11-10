@@ -174,6 +174,22 @@ async fn creates_a_runner_limited_as_it_is_asked_and_answers_its_limits() {
 }
 
 #[tokio::test]
+async fn gives_a_runner_the_hosts_docker_only_when_asked() {
+    let panel = panel();
+    let mut asking = runner("https://github.com/otsobide/mindweaver", "given");
+    asking["host_docker"] = json!(true);
+
+    let given = panel.post("/api/runners", Some(asking)).await;
+    let isolated = panel
+        .created("https://github.com/otsobide/mindweaver", "isolated")
+        .await;
+
+    assert_eq!(given.status, StatusCode::CREATED);
+    assert_eq!(given.body["host_docker"], true);
+    assert_eq!(isolated["host_docker"], false);
+}
+
+#[tokio::test]
 async fn refuses_a_limit_naming_it() {
     for (field, value, refused) in [
         ("cpus", json!("0"), "CPU limit"),

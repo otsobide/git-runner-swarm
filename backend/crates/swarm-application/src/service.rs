@@ -2,8 +2,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use swarm_domain::{
-    Forge, RegistrationToken, Runner, RunnerDefinition, RunnerFilter, RunnerId, RunnerLabels,
-    RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope,
+    EngineAccess, Forge, RegistrationToken, Runner, RunnerDefinition, RunnerFilter, RunnerId,
+    RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope,
 };
 use thiserror::Error;
 
@@ -26,6 +26,8 @@ pub struct CreateRunner {
     pub lifecycle: RunnerLifecycle,
     /// What it may use of its host.
     pub limits: RunnerLimits,
+    /// Whether its jobs may use the engine it runs on.
+    pub engine_access: EngineAccess,
     pub token: RegistrationToken,
     /// The key of the image to create it from; its forge's default if
     /// `None`.
@@ -108,7 +110,8 @@ impl RunnerService {
             command.labels,
             command.lifecycle,
         )
-        .with_limits(command.limits);
+        .with_limits(command.limits)
+        .with_engine_access(command.engine_access);
 
         let runners = self.runtime.list().await?;
         if runners
@@ -249,6 +252,7 @@ mod tests {
             labels: RunnerLabels::parse_comma_separated("gpu").unwrap(),
             lifecycle: RunnerLifecycle::Persistent,
             limits: RunnerLimits::none(),
+            engine_access: EngineAccess::Isolated,
             token: RegistrationToken::new("AESOHC2S").unwrap(),
             image: None,
         }
@@ -316,6 +320,33 @@ mod tests {
             runtime.runner(runner.id()).unwrap().definition().limits(),
             limits
         );
+    }
+
+    #[tokio::test]
+    async fn gives_a_runners_jobs_the_engine_only_when_asked() {
+        let runtime = Arc::new(FakeRuntime::default());
+        let service = service(&runtime);
+
+        let isolated = service
+            .create(command(
+                "https://github.com/otsobide/mindweaver",
+                "isolated",
+            ))
+            .await
+            .unwrap();
+        let given = service
+            .create(CreateRunner {
+                engine_access: EngineAccess::Host,
+                ..command("https://github.com/otsobide/mindweaver", "given")
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            isolated.definition().engine_access(),
+            EngineAccess::Isolated
+        );
+        assert_eq!(given.definition().engine_access(), EngineAccess::Host);
     }
 
     #[tokio::test]

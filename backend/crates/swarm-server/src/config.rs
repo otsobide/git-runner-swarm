@@ -17,6 +17,10 @@ pub const DEFAULT_GITHUB_IMAGE: &str = "ghcr.io/actions/actions-runner:latest";
 /// otherwise.
 pub const DEFAULT_STOP_TIMEOUT: i32 = 30;
 
+/// The engine's socket on the host, which runners given Docker mount,
+/// unless `GRS_RUNNER_DOCKER_SOCKET` says otherwise.
+pub const DEFAULT_RUNNER_DOCKER_SOCKET: &str = "/var/run/docker.sock";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     /// `GRS_LISTEN`: the address and port to listen on.
@@ -33,6 +37,9 @@ pub struct Config {
     /// `GRS_STOP_TIMEOUT`: how many seconds a runner is given to stop
     /// cleanly before it is killed.
     pub stop_timeout: i32,
+    /// `GRS_RUNNER_DOCKER_SOCKET`: where the engine's socket is on the
+    /// host, for runners whose jobs are given Docker to mount it.
+    pub runner_docker_socket: String,
 }
 
 /// Where runners run.
@@ -110,12 +117,23 @@ impl Config {
                 )?,
             };
 
+        let runner_docker_socket = variable("GRS_RUNNER_DOCKER_SOCKET")
+            .unwrap_or_else(|| DEFAULT_RUNNER_DOCKER_SOCKET.to_owned());
+        if !runner_docker_socket.starts_with('/') {
+            return Err(ConfigError::Invalid {
+                variable: "GRS_RUNNER_DOCKER_SOCKET",
+                value: runner_docker_socket,
+                expected: "an absolute path on the host, such as /var/run/docker.sock",
+            });
+        }
+
         Ok(Self {
             listen,
             web_dir: variable("GRS_WEB_DIR").map(PathBuf::from),
             runtime,
             github_image,
             stop_timeout,
+            runner_docker_socket,
         })
     }
 }
@@ -146,6 +164,7 @@ mod tests {
             "ghcr.io/actions/actions-runner:latest"
         );
         assert_eq!(config.stop_timeout, 30);
+        assert_eq!(config.runner_docker_socket, "/var/run/docker.sock");
     }
 
     #[test]
@@ -156,6 +175,7 @@ mod tests {
             ("GRS_RUNTIME", "memory"),
             ("GRS_GITHUB_IMAGE", "ghcr.io/actions/actions-runner:2.338.2"),
             ("GRS_STOP_TIMEOUT", "60"),
+            ("GRS_RUNNER_DOCKER_SOCKET", "/run/user/1000/docker.sock"),
         ])
         .unwrap();
 
@@ -167,6 +187,7 @@ mod tests {
             "ghcr.io/actions/actions-runner:2.338.2"
         );
         assert_eq!(config.stop_timeout, 60);
+        assert_eq!(config.runner_docker_socket, "/run/user/1000/docker.sock");
     }
 
     #[test]
@@ -185,6 +206,7 @@ mod tests {
             ("GRS_STOP_TIMEOUT", "-1"),
             ("GRS_STOP_TIMEOUT", "soon"),
             ("GRS_GITHUB_IMAGE", "two words"),
+            ("GRS_RUNNER_DOCKER_SOCKET", "docker.sock"),
         ] {
             let error = config(&[(variable, value)]).unwrap_err();
             assert!(error.to_string().starts_with(variable), "{error}");

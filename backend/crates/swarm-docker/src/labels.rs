@@ -8,8 +8,8 @@
 use std::collections::HashMap;
 
 use swarm_domain::{
-    CpuLimit, InvalidValue, MemoryLimit, RunnerDefinition, RunnerId, RunnerLabels, RunnerLifecycle,
-    RunnerLimits, RunnerName, RunnerScope,
+    CpuLimit, EngineAccess, InvalidValue, MemoryLimit, RunnerDefinition, RunnerId, RunnerLabels,
+    RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope,
 };
 use thiserror::Error;
 
@@ -28,6 +28,9 @@ const CPUS: &str = "git-runner-swarm.cpus";
 /// Since 0.2: the memory limit, as `MemoryLimit` writes it; none when
 /// missing.
 const MEMORY: &str = "git-runner-swarm.memory";
+/// Since 0.2: `host` when the runner's jobs are given the engine; isolated
+/// when missing.
+const ENGINE: &str = "git-runner-swarm.engine";
 
 /// Why a container's labels could not be read back into a runner's
 /// definition.
@@ -64,6 +67,9 @@ pub(crate) fn encode(runner: &RunnerDefinition) -> HashMap<String, String> {
     if let Some(memory) = limits.memory() {
         labels.insert(MEMORY.to_owned(), memory.to_string());
     }
+    if runner.engine_access().is_host() {
+        labels.insert(ENGINE.to_owned(), runner.engine_access().to_string());
+    }
     labels
 }
 
@@ -85,7 +91,10 @@ pub(crate) fn decode(
     .with_limits(RunnerLimits::new(
         read_optional(labels, CPUS, CpuLimit::parse)?,
         read_optional(labels, MEMORY, MemoryLimit::parse)?,
-    )))
+    ))
+    .with_engine_access(
+        read_optional(labels, ENGINE, str::parse::<EngineAccess>)?.unwrap_or_default(),
+    ))
 }
 
 fn read<'a, T>(
@@ -197,6 +206,27 @@ mod tests {
 
         assert_eq!(definition.name().as_str(), "builder");
         assert!(definition.limits().is_none());
+    }
+
+    #[test]
+    fn reads_back_a_runner_given_the_engine() {
+        let definition = definition().with_engine_access(EngineAccess::Host);
+
+        let labels = encode(&definition);
+
+        assert_eq!(labels.get(ENGINE).map(String::as_str), Some("host"));
+        assert_eq!(decode(&labels).unwrap(), definition);
+    }
+
+    #[test]
+    fn reads_a_runner_without_an_engine_label_as_isolated() {
+        let labels = encode(&definition());
+
+        assert!(!labels.contains_key(ENGINE));
+        assert_eq!(
+            decode(&labels).unwrap().engine_access(),
+            EngineAccess::Isolated
+        );
     }
 
     #[test]

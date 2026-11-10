@@ -24,6 +24,8 @@ export interface Runner {
   cpus: string | null
   /** The most memory it may use, as Docker writes sizes, `4g`; `null` for no limit. */
   memory: string | null
+  /** Whether its jobs are given the host's Docker. */
+  host_docker: boolean
   image: string
   status: RunnerStatus
   exit_code: number | null
@@ -50,6 +52,8 @@ export interface NewRunner {
   cpus?: string
   /** The most memory it may use, `4g`; no limit when left out. */
   memory?: string
+  /** Whether its jobs are given the host's Docker; not when left out. */
+  host_docker?: boolean
   /** The key of the image; the forge's default when left out. */
   image?: string
 }

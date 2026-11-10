@@ -135,6 +135,20 @@ describe('the panel', () => {
     expect(rowOf(wrapper, 'small').textContent).toContain('Up to 0.5 CPUs and 512 MiB of memory')
   })
 
+  it('creates a runner given this host’s Docker, and says so in its row', async () => {
+    const wrapper = await open(fleet())
+
+    await clickButton(wrapper, 'New runner')
+    await wrapper.find('input[type="url"]').setValue('https://github.com/acme/site')
+    await wrapper.find('input[type="password"]').setValue('AESOHC2S')
+    await wrapper.findAll('[role="dialog"] input[type="text"]')[0]!.setValue('image-builder')
+    await wrapper.find('[role="dialog"] input[type="checkbox"]').setValue(true)
+    await wrapper.find('[role="dialog"] form').trigger('submit')
+    await flushPromises()
+
+    expect(rowOf(wrapper, 'image-builder').textContent).toContain('Its jobs use this host’s Docker')
+  })
+
   it('keeps what was typed when the API refuses a value, and points at it', async () => {
     const gateway = fleet()
     const wrapper = await open(gateway)

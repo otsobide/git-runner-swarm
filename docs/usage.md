@@ -132,6 +132,14 @@ use. Left empty, it may use all of it.
 They are Docker's own limits on the runner's container
 (`docker run --cpus --memory`), and the runner's row says what they are.
 
+**Docker.** Ticking **Give its jobs this host's Docker** lets the
+runner's jobs use the host's Docker engine, to build images and run
+containers. Its jobs can then do anything on the host that root can, so
+only tick it for repositories whose every workflow you trust (see
+[security.md](security.md)). The runner's row then says *Its jobs use
+this host's Docker*. How it works, and what does not, is under
+[Docker in jobs](#docker-in-jobs).
+
 **Image.** The panel runs GitHub's official runner image,
 `ghcr.io/actions/actions-runner:latest` unless configured otherwise
 (`GRS_GITHUB_IMAGE`). When more images are configured, the form offers
@@ -173,12 +181,47 @@ little else:
   there;
 - compilers (`gcc`, `make`), language runtimes, and everything else a
   GitHub-hosted runner comes with are not;
-- the `docker` command is there, but no Docker engine: the panel does
-  not give runners the host's Docker.
+- the `docker` command (with `buildx`, but not `compose`) is there, but
+  no Docker engine to use, unless the runner was given the host's.
 
 So jobs install what they need, with the `actions/setup-*` actions
 (Node, Python, Go, Java, …) or `sudo apt-get install`. On a persistent
 runner, what one job installs stays for the next.
+
+### Docker in jobs
+
+A runner given the host's Docker has the host's Docker socket mounted at
+`/var/run/docker.sock`, and its user joins the group owning the socket,
+so `docker` commands in its jobs talk to the host's engine:
+
+```yaml
+jobs:
+  image:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t my-app .
+      - run: docker run --rm my-app ./run-tests.sh
+```
+
+What the jobs start are the host's containers, next to the runner's, not
+inside it. So:
+
+- **Bind mounts of the job's files do not work**: `docker run -v
+  "$PWD:/src"` mounts the host's `$PWD`, which does not exist there. Copy
+  files in with the build context, `COPY` in a Dockerfile, or `docker cp`.
+- **`container:` jobs and `services:` do not work**, for the same reason:
+  the runner mounts its work directory into them by path.
+- **What jobs leave stays**: images, volumes and containers a job does
+  not remove are left on the host, and deleting the runner does not
+  remove them.
+- **`docker compose` is not in GitHub's image**: install it in the job,
+  or use an image of your own (see
+  [configuration.md](configuration.md#grs_github_image)).
+
+The socket mounted is `/var/run/docker.sock` on the host, unless
+`GRS_RUNNER_DOCKER_SOCKET` says otherwise (for rootless Docker, for
+example).
 
 ## Reading the panel
 

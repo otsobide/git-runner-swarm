@@ -15,6 +15,7 @@ export function aRunner(overrides: Partial<Runner> = {}): Runner {
     lifecycle: 'persistent',
     cpus: null,
     memory: null,
+    host_docker: false,
     image: 'ghcr.io/actions/actions-runner:latest',
     status: 'running',
     exit_code: null,
@@ -76,6 +77,7 @@ export class FakeGateway implements RunnersGateway {
       lifecycle: newRunner.lifecycle,
       cpus: newRunner.cpus ?? null,
       memory: newRunner.memory ?? null,
+      host_docker: newRunner.host_docker ?? false,
     })
     this.runners = [runner, ...this.runners]
     return copy(runner)

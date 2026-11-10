@@ -69,9 +69,18 @@ on GitHub on its own: not create tokens, not remove registrations.
 
 Jobs run inside their runner's container, as the `runner` user, who can
 use `sudo` without a password: a job is root **in its container**.
-The panel gives runners nothing of the host's: no Docker socket, no
-mounts, no extra privileges, and Docker's default network, from which
-they can reach the internet and whatever the host can reach.
+Unless asked, the panel gives runners nothing of the host's: no Docker
+socket, no mounts, no extra privileges, and Docker's default network,
+from which they can reach the internet and whatever the host can reach.
+
+A runner created with **Give its jobs this host's Docker** is the one
+exception, and a large one: its jobs get the host's Docker socket, so
+any of them can start a container that mounts the host's filesystem,
+and is root on the host. Give it only to runners of repositories where
+every workflow, and everyone who can change one, is trusted; never to a
+runner of a public repository. The panel shows such runners as using
+the host's Docker in their row, and `docker ps --filter
+label=git-runner-swarm.engine=host` lists them.
 
 A persistent runner keeps its container from job to job: what one job
 leaves (files, installed tools, a process left running) is there for the

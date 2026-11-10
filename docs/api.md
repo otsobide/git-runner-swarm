@@ -34,6 +34,7 @@ loudly.
   "lifecycle": "persistent",
   "cpus": "2",
   "memory": "8g",
+  "host_docker": false,
   "image": "ghcr.io/actions/actions-runner:latest",
   "status": "running",
   "exit_code": null,
@@ -54,6 +55,7 @@ loudly.
 | `lifecycle`  | string          | `persistent` (job after job) or `ephemeral` (one job).                                              |
 | `cpus`       | string or null  | The most CPUs it may use, `1.5`; `null` for no limit.                                               |
 | `memory`     | string or null  | The most memory it may use, in the largest whole unit, `4g` or `1536m`; `null` for no limit.        |
+| `host_docker`| boolean         | Whether its jobs are given the host's Docker.                                                       |
 | `image`      | string          | The image its container runs.                                                                       |
 | `status`     | string          | Its container's state: `created`, `running`, `restarting`, `paused`, `exited` or `dead`.            |
 | `exit_code`  | number or null  | What its container last exited with, while `exited`, `restarting` or `dead`; `null` otherwise.      |
@@ -128,6 +130,7 @@ curl 'http://localhost:8080/api/runners?owner=lumen-labs&label=gpu'
     "lifecycle": "persistent",
     "cpus": "2",
     "memory": "8g",
+    "host_docker": false,
     "image": "ghcr.io/actions/actions-runner:latest",
     "status": "running",
     "exit_code": null,
@@ -152,6 +155,7 @@ with GitHub happens in the container, after that.
 | `lifecycle` | no       | `persistent` (the default) or `ephemeral`.                                                     |
 | `cpus`      | no       | The most CPUs it may use: a number or a string, from `0.01` to `1024`, to a thousandth.        |
 | `memory`    | no       | The most memory it may use: `512m`, `4g`, `1.5g` (`k`, `m`, `g`, `t`, or bytes); at least 6 MiB. |
+| `host_docker` | no     | `true` to give its jobs the host's Docker (see [security.md](security.md)); `false` by default. |
 | `image`     | no       | The `key` of an image from `GET /api/images`; the forge's default if left out or empty.        |
 | `forge`     | no       | `github` (the default).                                                                        |
 

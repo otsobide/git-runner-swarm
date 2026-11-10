@@ -14,10 +14,10 @@ use bollard::query_parameters::InspectContainerOptions;
 use swarm_application::ports::{
     EnvironmentVariable, LaunchSpec, RestartPolicy, RunnerRuntime, RuntimeError,
 };
-use swarm_docker::DockerRuntime;
+use swarm_docker::{DockerRuntime, EngineSocket};
 use swarm_domain::{
-    CpuLimit, Forge, ImageReference, MemoryLimit, RunnerDefinition, RunnerId, RunnerLabels,
-    RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope, RunnerStatus,
+    CpuLimit, EngineAccess, Forge, ImageReference, MemoryLimit, RunnerDefinition, RunnerId,
+    RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope, RunnerStatus,
 };
 
 const IMAGE: &str = "busybox:1.37";
@@ -175,6 +175,39 @@ async fn limits_the_container_as_the_runner_asks_and_reads_the_limits_back() {
     assert_eq!(host.memory, Some(64 * 1024 * 1024));
     let found = runtime.find(definition.id()).await.unwrap().unwrap();
     assert_eq!(found.definition().limits(), limits);
+}
+
+#[tokio::test]
+#[ignore = "needs a Docker engine; run with --include-ignored"]
+async fn gives_the_engine_to_a_runner_that_asks_for_it() {
+    let runtime =
+        runtime().with_engine_socket(EngineSocket::new("/var/run/docker.sock", Some(4242)));
+    let definition = definition("given-the-engine").with_engine_access(EngineAccess::Host);
+    let _removed = Removed(definition.id());
+    runtime
+        .ensure_image(&ImageReference::new(IMAGE).unwrap())
+        .await
+        .unwrap();
+    runtime.launch(&definition, &sleeping()).await.unwrap();
+
+    let host = Docker::connect_with_defaults()
+        .unwrap()
+        .inspect_container(
+            &format!("git-runner-swarm-{}", definition.id()),
+            None::<InspectContainerOptions>,
+        )
+        .await
+        .unwrap()
+        .host_config
+        .unwrap();
+
+    assert_eq!(
+        host.binds,
+        Some(vec!["/var/run/docker.sock:/var/run/docker.sock".to_owned()])
+    );
+    assert_eq!(host.group_add, Some(vec!["4242".to_owned()]));
+    let found = runtime.find(definition.id()).await.unwrap().unwrap();
+    assert_eq!(found.definition().engine_access(), EngineAccess::Host);
 }
 
 #[tokio::test]

@@ -34,6 +34,7 @@ function expectRunner(value: Runner) {
       'lifecycle',
       'cpus',
       'memory',
+      'host_docker',
       'image',
       'status',
       'exit_code',
@@ -48,6 +49,7 @@ function expectRunner(value: Runner) {
   expect(['persistent', 'ephemeral']).toContain(value.lifecycle)
   expect(value.cpus === null || typeof value.cpus === 'string').toBe(true)
   expect(value.memory === null || typeof value.memory === 'string').toBe(true)
+  expect(typeof value.host_docker).toBe('boolean')
   expect(['created', 'running', 'restarting', 'paused', 'exited', 'dead']).toContain(value.status)
   expect(value.exit_code === null || Number.isInteger(value.exit_code)).toBe(true)
   expect(Number.isInteger(value.created_at)).toBe(true)
@@ -107,6 +109,14 @@ describe.skipIf(api === undefined)('httpGateway against the API', () => {
 
     expectRunner(runner)
     expect(runner).toMatchObject({ cpus: '0.5', memory: '512m' })
+  })
+
+  it('creates a runner given the host’s Docker, answering that it is', async () => {
+    const given = await create('given-docker', { host_docker: true })
+    const isolated = await create('isolated')
+
+    expect(given.host_docker).toBe(true)
+    expect(isolated.host_docker).toBe(false)
   })
 
   it('stops and starts a runner, answering it in its new state', async () => {

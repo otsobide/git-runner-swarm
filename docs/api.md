@@ -18,6 +18,7 @@ loudly.
 | `POST /api/runners/{id}/start` | Starts a runner.                                 | `200`, a runner  |
 | `POST /api/runners/{id}/stop`  | Stops a runner.                                  | `200`, a runner  |
 | `DELETE /api/runners/{id}`     | Deletes a runner.                                | `204`, no body   |
+| `GET /api/runners/{id}/logs`   | The latest lines a runner logged.                | `200`            |
 
 ## A runner
 
@@ -197,6 +198,30 @@ answers `204 No Content`. GitHub keeps listing the runner, offline,
 until it drops it or it is removed under the repository's or
 organization's **Settings › Actions › Runners**.
 
+## `GET /api/runners/{id}/logs`
+
+The latest lines the runner's container wrote, oldest first: the runner
+registering and connecting, and the jobs it runs. `lines` says how many,
+from 1 to 5000, 200 unless given. Each line says which output it was
+written to.
+
+```sh
+curl 'http://localhost:8080/api/runners/9cf4fc44-2ce1-4c75-a246-5c95f620ded3/logs?lines=3'
+```
+
+```json
+{
+  "lines": [
+    {"stream": "stdout", "text": "√ Connected to GitHub"},
+    {"stream": "stdout", "text": "Current runner version: '2.338.2'"},
+    {"stream": "stdout", "text": "2026-11-10 07:07:20Z: Listening for Jobs"}
+  ]
+}
+```
+
+Lines written to both outputs within the same instant may come in
+either order: Docker logs each output on its own.
+
 ## Errors
 
 Every failure is answered with a status and a body saying why:
@@ -208,7 +233,7 @@ Every failure is answered with a status and a body saying why:
 `field` is there when a single value is to blame, named as the domain
 names it: `URL`, `owner` or `repository` (a part of the URL), `runner
 name`, `registration token`, `label`, `lifecycle`, `CPU limit`,
-`memory limit`, `image`, `forge`, `scope` or `status`.
+`memory limit`, `image`, `forge`, `scope`, `status` or `lines`.
 
 | Status | When                                                                                        |
 | ------ | ------------------------------------------------------------------------------------------- |

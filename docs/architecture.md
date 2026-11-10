@@ -90,6 +90,8 @@ panel, which uses it to mark the input at fault.
 | `MemoryLimit`       | the most memory a runner may use                | a size as Docker writes one (`512m`, `4g`); at least 6 MiB                                |
 | `RunnerLimits`      | a runner's limits                               | a CPU limit and a memory limit, each optional                                             |
 | `EngineAccess`      | whether jobs may use the runner's engine        | `isolated` (the default) or `host`                                                        |
+| `LogTail`           | how many of a runner's latest log lines to read | 1 to 5000 lines, 200 unless asked                                                         |
+| `LogLine`           | one line a runner logged                        | its text, and the output it went to: `stdout` or `stderr`                                 |
 | `RunnerStatus`      | what its container is doing                     | `created`, `running`, `restarting`, `paused`, `exited` or `dead`                          |
 
 Built from these:
@@ -107,7 +109,7 @@ Built from these:
 ### `swarm-application`: the use cases and their ports
 
 `RunnerService` holds one method per use case: `create`, `list`,
-`get`, `start`, `stop` and `delete`. It needs two things from outside,
+`get`, `start`, `stop`, `delete` and `logs`. It needs two things from outside,
 declared as ports (`swarm_application::ports`):
 
 ```rust
@@ -121,6 +123,7 @@ pub trait RunnerRuntime: Send + Sync {
     async fn start(&self, id: RunnerId) -> Result<(), RuntimeError>;
     async fn stop(&self, id: RunnerId) -> Result<(), RuntimeError>;
     async fn remove(&self, id: RunnerId) -> Result<(), RuntimeError>;
+    async fn logs(&self, id: RunnerId, tail: LogTail) -> Result<Vec<LogLine>, RuntimeError>;
 }
 
 /// How to start a container of one image so the runner in it registers.
@@ -310,8 +313,9 @@ web/src/
 - **Components.** `SwarmStrip` (every runner's lamp and the counts),
   `FilterBar`, `OwnerRack` (one owner's runners), `RunnerRow` (one
   runner, with its actions and an inline delete confirmation),
-  `StatusLamp`, and `CreateRunnerPanel` (the form, as a dialog that
-  marks the field the API blames).
+  `StatusLamp`, `CreateRunnerPanel` (the form, as a dialog that
+  marks the field the API blames), and `RunnerLogs` (a runner's latest
+  log lines, kept current by `state/useRunnerLogs.ts` while open).
 - **Design.** Colour means status and nothing else: the lamps are the
   only saturated things on the page, so a runner in trouble is the first
   thing seen. Everything else is steel and ink, in tokens

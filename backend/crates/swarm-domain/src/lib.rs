@@ -6,6 +6,7 @@
 //! holding it never checks it again.
 
 mod cpu_limit;
+mod engine_access;
 mod error;
 mod forge;
 mod forge_address;
@@ -27,6 +28,7 @@ mod runner_status;
 mod validate;
 
 pub use cpu_limit::CpuLimit;
+pub use engine_access::EngineAccess;
 pub use error::InvalidValue;
 pub use forge::Forge;
 pub use forge_address::ForgeAddress;

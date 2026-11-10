@@ -36,6 +36,14 @@ describe('RunnerRow', () => {
     expect(wrapper.find('.serves').text()).toBe('Every repository, one job at a time')
   })
 
+  it('says what a runner may use of its host, when it is limited', () => {
+    const limited = row(aRunner({ cpus: '2', memory: '4g' }))
+    const unlimited = row(aRunner())
+
+    expect(limited.find('.limits').text()).toBe('Up to 2 CPUs and 4 GiB of memory')
+    expect(unlimited.find('.limits').exists()).toBe(false)
+  })
+
   it('offers to stop a running runner', async () => {
     const runner = aRunner({ status: 'running' })
     const wrapper = row(runner)

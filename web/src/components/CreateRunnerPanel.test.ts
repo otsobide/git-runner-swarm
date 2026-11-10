@@ -18,6 +18,13 @@ async function fill(wrapper: ReturnType<typeof panel>) {
   await labels!.setValue('gpu, large  docker')
 }
 
+/** The input a label names, as a person finds it. */
+function labelled(wrapper: ReturnType<typeof panel>, text: string) {
+  const label = wrapper.findAll('label').find((label) => label.text() === text)
+  if (label === undefined) throw new Error(`no ${text} label`)
+  return wrapper.find(`[id="${label.attributes('for')}"]`)
+}
+
 describe('CreateRunnerPanel', () => {
   it('creates the runner the form describes', async () => {
     const asked: NewRunner[] = []
@@ -43,6 +50,56 @@ describe('CreateRunnerPanel', () => {
       },
     ])
     expect(wrapper.emitted('created')).toEqual([[created]])
+    wrapper.unmount()
+  })
+
+  it('creates a runner limited as the form says', async () => {
+    const asked: NewRunner[] = []
+    const wrapper = panel(async (runner) => {
+      asked.push(runner)
+      return aRunner()
+    })
+
+    await fill(wrapper)
+    await labelled(wrapper, 'CPUs').setValue(' 1.5 ')
+    await labelled(wrapper, 'Memory').setValue('4g')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(asked[0]).toMatchObject({ cpus: '1.5', memory: '4g' })
+    wrapper.unmount()
+  })
+
+  it('asks for no limits when they are left empty', async () => {
+    const asked: NewRunner[] = []
+    const wrapper = panel(async (runner) => {
+      asked.push(runner)
+      return aRunner()
+    })
+
+    await fill(wrapper)
+    await labelled(wrapper, 'Memory').setValue('  ')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(asked[0]).not.toHaveProperty('cpus')
+    expect(asked[0]).not.toHaveProperty('memory')
+    wrapper.unmount()
+  })
+
+  it('points at a limit the API refused', async () => {
+    const wrapper = panel(() =>
+      Promise.reject(new GatewayError('invalid memory limit: it is less than the 6 MiB allowed', 422, 'memory limit')),
+    )
+
+    await fill(wrapper)
+    await labelled(wrapper, 'Memory').setValue('5m')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(labelled(wrapper, 'Memory').attributes('aria-invalid')).toBe('true')
+    expect(labelled(wrapper, 'CPUs').attributes('aria-invalid')).toBe('false')
+    expect(wrapper.find('.error').text()).toBe('It is less than the 6 MiB allowed.')
     wrapper.unmount()
   })
 

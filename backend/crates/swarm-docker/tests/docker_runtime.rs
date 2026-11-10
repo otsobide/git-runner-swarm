@@ -16,8 +16,8 @@ use swarm_application::ports::{
 };
 use swarm_docker::DockerRuntime;
 use swarm_domain::{
-    Forge, ImageReference, RunnerDefinition, RunnerId, RunnerLabels, RunnerLifecycle, RunnerName,
-    RunnerScope, RunnerStatus,
+    CpuLimit, Forge, ImageReference, MemoryLimit, RunnerDefinition, RunnerId, RunnerLabels,
+    RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope, RunnerStatus,
 };
 
 const IMAGE: &str = "busybox:1.37";
@@ -142,6 +142,39 @@ async fn starts_the_container_as_the_spec_says() {
         host.restart_policy.unwrap().name,
         Some(RestartPolicyNameEnum::UNLESS_STOPPED)
     );
+}
+
+#[tokio::test]
+#[ignore = "needs a Docker engine; run with --include-ignored"]
+async fn limits_the_container_as_the_runner_asks_and_reads_the_limits_back() {
+    let runtime = runtime();
+    let limits = RunnerLimits::new(
+        Some(CpuLimit::parse("0.5").unwrap()),
+        Some(MemoryLimit::parse("64m").unwrap()),
+    );
+    let definition = definition("limited").with_limits(limits);
+    let _removed = Removed(definition.id());
+    runtime
+        .ensure_image(&ImageReference::new(IMAGE).unwrap())
+        .await
+        .unwrap();
+    runtime.launch(&definition, &sleeping()).await.unwrap();
+
+    let host = Docker::connect_with_defaults()
+        .unwrap()
+        .inspect_container(
+            &format!("git-runner-swarm-{}", definition.id()),
+            None::<InspectContainerOptions>,
+        )
+        .await
+        .unwrap()
+        .host_config
+        .unwrap();
+
+    assert_eq!(host.nano_cpus, Some(500_000_000));
+    assert_eq!(host.memory, Some(64 * 1024 * 1024));
+    let found = runtime.find(definition.id()).await.unwrap().unwrap();
+    assert_eq!(found.definition().limits(), limits);
 }
 
 #[tokio::test]

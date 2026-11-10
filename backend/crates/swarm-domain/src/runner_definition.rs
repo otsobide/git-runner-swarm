@@ -1,4 +1,6 @@
-use crate::{Forge, RunnerId, RunnerLabels, RunnerLifecycle, RunnerName, RunnerScope};
+use crate::{
+    Forge, RunnerId, RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope,
+};
 
 /// What a runner is asked to be when it is created: everything about it
 /// that stays the same for as long as it exists.
@@ -10,6 +12,7 @@ pub struct RunnerDefinition {
     name: RunnerName,
     labels: RunnerLabels,
     lifecycle: RunnerLifecycle,
+    limits: RunnerLimits,
 }
 
 impl RunnerDefinition {
@@ -28,7 +31,15 @@ impl RunnerDefinition {
             name,
             labels,
             lifecycle,
+            limits: RunnerLimits::none(),
         }
+    }
+
+    /// The same runner, limited to `limits` of its host.
+    #[must_use]
+    pub fn with_limits(mut self, limits: RunnerLimits) -> Self {
+        self.limits = limits;
+        self
     }
 
     pub fn id(&self) -> RunnerId {
@@ -53,6 +64,11 @@ impl RunnerDefinition {
 
     pub fn lifecycle(&self) -> RunnerLifecycle {
         self.lifecycle
+    }
+
+    /// What it may use of its host; nothing is limited unless asked.
+    pub fn limits(&self) -> RunnerLimits {
+        self.limits
     }
 
     /// Whether `other` is another runner that would register under this
@@ -88,6 +104,26 @@ mod tests {
 
         assert!(first.conflicts_with(&second));
         assert!(second.conflicts_with(&first));
+    }
+
+    #[test]
+    fn limits_nothing_unless_told_to() {
+        let runner = definition("https://github.com/otsobide/mindweaver", "builder");
+
+        assert!(runner.limits().is_none());
+    }
+
+    #[test]
+    fn keeps_the_limits_it_is_given() {
+        let limits = RunnerLimits::new(
+            Some(crate::CpuLimit::parse("1.5").unwrap()),
+            Some(crate::MemoryLimit::parse("4g").unwrap()),
+        );
+
+        let runner =
+            definition("https://github.com/otsobide/mindweaver", "builder").with_limits(limits);
+
+        assert_eq!(runner.limits(), limits);
     }
 
     #[test]

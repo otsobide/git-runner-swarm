@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 use swarm_application::CreateRunner;
 use swarm_application::ports::RunnerImage;
 use swarm_domain::{
-    CpuLimit, InvalidValue, MemoryLimit, OwnerName, RegistrationToken, RepositoryName, Runner,
-    RunnerFilter, RunnerLabel, RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName,
-    RunnerScope,
+    CpuLimit, EngineAccess, InvalidValue, MemoryLimit, OwnerName, RegistrationToken,
+    RepositoryName, Runner, RunnerFilter, RunnerLabel, RunnerLabels, RunnerLifecycle, RunnerLimits,
+    RunnerName, RunnerScope,
 };
 
 /// A runner, as the API answers it.
@@ -173,6 +173,7 @@ impl CreateRunnerRequest {
                     .map(|memory| MemoryLimit::parse(&memory))
                     .transpose()?,
             ),
+            engine_access: EngineAccess::Isolated,
             token: RegistrationToken::new(self.token)?,
             image: present(self.image),
         })

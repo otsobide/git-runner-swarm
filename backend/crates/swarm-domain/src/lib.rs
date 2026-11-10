@@ -5,10 +5,12 @@
 //! when it is built, so a value of its type is always a valid one and code
 //! holding it never checks it again.
 
+mod cpu_limit;
 mod error;
 mod forge;
 mod forge_address;
 mod image_reference;
+mod memory_limit;
 mod owner_name;
 mod registration_token;
 mod repository_name;
@@ -23,10 +25,12 @@ mod runner_scope;
 mod runner_status;
 mod validate;
 
+pub use cpu_limit::CpuLimit;
 pub use error::InvalidValue;
 pub use forge::Forge;
 pub use forge_address::ForgeAddress;
 pub use image_reference::ImageReference;
+pub use memory_limit::MemoryLimit;
 pub use owner_name::OwnerName;
 pub use registration_token::RegistrationToken;
 pub use repository_name::RepositoryName;

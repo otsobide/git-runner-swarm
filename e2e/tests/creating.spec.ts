@@ -5,7 +5,16 @@
  */
 import { expect, type Page, test } from '@playwright/test'
 
-import { createRunner, deleteTestRunners, fileIn, owner, row, runnerNamed } from '../support'
+import {
+  containerOf,
+  createRunner,
+  deleteTestRunners,
+  docker,
+  fileIn,
+  owner,
+  row,
+  runnerNamed,
+} from '../support'
 
 test.beforeEach(async ({ request }) => {
   await deleteTestRunners(request)
@@ -61,6 +70,21 @@ test('creates a runner for every repository of an owner, taking one job', async 
   await expect(row(page, owner.mine, 'one-shot')).toContainText('Every repository, one job at a time')
   const runner = await runnerNamed(request, 'one-shot')
   await expect.poll(() => fileIn(runner!, 'config.args')).toContain('--ephemeral')
+})
+
+test('creates a runner limited as the form says, which Docker holds it to', async ({ page, request }) => {
+  const form = await openForm(page)
+  await form.getByLabel('Repository or owner URL').fill(`https://github.com/${owner.mine}/mindweaver`)
+  await form.getByLabel('Registration token').fill('E2E-TOKEN')
+  await form.getByLabel('Name', { exact: true }).fill('limited')
+  await form.getByLabel('CPUs', { exact: true }).fill('0.5')
+  await form.getByLabel('Memory', { exact: true }).fill('256m')
+  await form.getByRole('button', { name: 'Create runner' }).click()
+
+  await expect(row(page, owner.mine, 'limited')).toContainText('Up to 0.5 CPUs and 256 MiB of memory')
+  const runner = await runnerNamed(request, 'limited')
+  const limits = docker('inspect', '--format', '{{.HostConfig.NanoCpus}} {{.HostConfig.Memory}}', containerOf(runner!))
+  expect(limits.trim()).toBe(`500000000 ${256 * 1024 * 1024}`)
 })
 
 test('points at the field holding a value the API refuses', async ({ page }) => {

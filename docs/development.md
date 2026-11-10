@@ -83,12 +83,22 @@ containers, and outlive the server.
 ### The image
 
 ```sh
-docker compose up -d --build     # build and run, as a user would
-docker build -t git-runner-swarm .
+docker build -t otsobide/git-runner-swarm .   # for this machine's platform
+docker compose up -d                           # then run it, as a user would
 ```
 
 Cargo's registry and target directory are BuildKit caches, so a rebuild
 after a small change is much quicker than the first build.
+
+The image is built for linux/amd64 and linux/arm64, from either: both
+build stages run on the platform building, and the backend is
+cross-compiled, so nothing is emulated. To build both, with a builder
+that can hold more than one platform:
+
+```sh
+docker buildx create --name multiarch --driver docker-container
+docker buildx build --builder multiarch --platform linux/amd64,linux/arm64 .
+```
 
 ## Conventions
 
@@ -177,7 +187,16 @@ is the backend workspace's, in `backend/Cargo.toml`
 4. `git tag -a vX.Y.Z -m "git-runner-swarm X.Y.Z"`
 5. `git switch develop && git merge --no-ff release/X.Y.Z`
 6. `git branch -d release/X.Y.Z`
-7. `git push origin main develop vX.Y.Z`
+7. `git push origin main develop`, and wait for CI to pass on both.
+8. `git push origin vX.Y.Z`: the `release` workflow
+   (`.github/workflows/release.yml`) builds the image for amd64 and
+   arm64, pushes it to Docker Hub as `X.Y.Z`, `X.Y` and `latest`, then
+   pulls it back and checks it serves on both platforms.
+
+The workflow logs in to Docker Hub as `otsobide` with the repository
+secret `DOCKERHUB_TOKEN`, a Docker Hub access token with read and write
+access. A failed publish is retried by re-running the workflow, on the
+same tag.
 
 ## Screenshots
 

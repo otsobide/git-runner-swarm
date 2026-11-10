@@ -1,12 +1,16 @@
-# Runs the panel on this host, managing runners on this host's Docker:
+# Runs the panel on this host, managing runners on this host's Docker,
+# from the image published on Docker Hub:
 #
 #   docker compose up -d
 #
-# then open http://localhost:8080.
+# then open http://localhost:8080. `docker compose pull` and the same
+# again upgrade it. To run one built from this repository instead, build
+# it under the same name first: docker build -t otsobide/git-runner-swarm .
 services:
   panel:
-    build: .
-    image: git-runner-swarm:latest
+    # Pin a version (otsobide/git-runner-swarm:0.2) to upgrade only when
+    # you choose to.
+    image: otsobide/git-runner-swarm:latest
     restart: unless-stopped
     ports:
       # The panel has no login yet, and whoever reaches it controls the

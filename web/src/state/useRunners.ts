@@ -1,6 +1,6 @@
 import { onScopeDispose, reactive, ref, watch } from 'vue'
 
-import { GatewayError, type RunnersGateway } from '../core/gateway'
+import { asGatewayError, type GatewayError, type RunnersGateway } from '../core/gateway'
 import {
   isFiltering,
   type NewRunner,
@@ -128,9 +128,3 @@ export function useRunners(gateway: RunnersGateway, pollEvery = POLL_EVERY_MS) {
 }
 
 export type RunnersState = ReturnType<typeof useRunners>
-
-function asGatewayError(error: unknown): GatewayError {
-  return error instanceof GatewayError
-    ? error
-    : new GatewayError(error instanceof Error ? error.message : String(error), null, null)
-}

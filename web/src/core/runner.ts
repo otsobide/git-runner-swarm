@@ -33,6 +33,16 @@ export interface Runner {
   created_at: number
 }
 
+/** One line a runner logged, without its line break, as the API answers it. */
+export interface LogLine {
+  /** The output it was written to. */
+  stream: 'stdout' | 'stderr'
+  text: string
+}
+
+/** How many of a runner's latest log lines the panel shows. */
+export const LOG_LINES = 200
+
 /** A runner image runners can be created from. */
 export interface RunnerImage {
   key: string

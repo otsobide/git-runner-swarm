@@ -1,5 +1,13 @@
 import { GatewayError, type RunnersGateway } from '../core/gateway'
-import { type NewRunner, type Runner, type RunnerFilters, type RunnerImage, toQuery } from '../core/runner'
+import {
+  LOG_LINES,
+  type LogLine,
+  type NewRunner,
+  type Runner,
+  type RunnerFilters,
+  type RunnerImage,
+  toQuery,
+} from '../core/runner'
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>
 
@@ -64,6 +72,11 @@ export function httpGateway(
 
     deleteRunner(id) {
       return request<void>(runner(id), { method: 'DELETE' })
+    },
+
+    async runnerLogs(id, lines = LOG_LINES) {
+      const answer = await request<{ lines: LogLine[] }>(`${runner(id)}/logs?lines=${lines}`)
+      return answer.lines
     },
   }
 }

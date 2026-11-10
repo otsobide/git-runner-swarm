@@ -1,11 +1,13 @@
 //! Fakes of the ports, for the application's own tests.
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::SystemTime;
 
 use async_trait::async_trait;
 use swarm_domain::{
-    Forge, ImageReference, RegistrationToken, Runner, RunnerDefinition, RunnerId, RunnerStatus,
+    Forge, ImageReference, LogLine, LogStream, LogTail, RegistrationToken, Runner,
+    RunnerDefinition, RunnerId, RunnerStatus,
 };
 
 use crate::ports::{
@@ -67,6 +69,7 @@ pub(crate) struct FakeRuntime {
     runners: Mutex<Vec<Runner>>,
     pulled: Mutex<Vec<ImageReference>>,
     launched: Mutex<Vec<LaunchSpec>>,
+    logs: Mutex<HashMap<RunnerId, Vec<LogLine>>>,
     pulls_fail: bool,
 }
 
@@ -92,6 +95,15 @@ impl FakeRuntime {
 
     pub(crate) fn launched(&self) -> Vec<LaunchSpec> {
         self.launched.lock().unwrap().clone()
+    }
+
+    /// Has a runner log `lines`, to its standard output.
+    pub(crate) fn logged<'a>(&self, id: RunnerId, lines: impl IntoIterator<Item = &'a str>) {
+        self.logs.lock().unwrap().entry(id).or_default().extend(
+            lines
+                .into_iter()
+                .map(|line| LogLine::new(LogStream::Out, line)),
+        );
     }
 
     pub(crate) fn runner(&self, id: RunnerId) -> Option<Runner> {
@@ -172,5 +184,15 @@ impl RunnerRuntime for FakeRuntime {
             return Err(RuntimeError::NotFound(id));
         }
         Ok(())
+    }
+
+    async fn logs(&self, id: RunnerId, tail: LogTail) -> Result<Vec<LogLine>, RuntimeError> {
+        if self.runner(id).is_none() {
+            return Err(RuntimeError::NotFound(id));
+        }
+        let logs = self.logs.lock().unwrap();
+        let lines = logs.get(&id).map_or(&[][..], Vec::as_slice);
+        let from = lines.len().saturating_sub(tail.lines() as usize);
+        Ok(lines[from..].to_vec())
     }
 }

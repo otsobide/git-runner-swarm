@@ -2,8 +2,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use swarm_domain::{
-    EngineAccess, Forge, RegistrationToken, Runner, RunnerDefinition, RunnerFilter, RunnerId,
-    RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope,
+    EngineAccess, Forge, LogLine, LogTail, RegistrationToken, Runner, RunnerDefinition,
+    RunnerFilter, RunnerId, RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope,
 };
 use thiserror::Error;
 
@@ -201,6 +201,17 @@ impl RunnerService {
     pub async fn delete(&self, id: RunnerId) -> Result<(), RunnerError> {
         self.runtime.remove(id).await?;
         Ok(())
+    }
+
+    /// The latest lines a runner logged, oldest first, as many as `tail`
+    /// says at most: what the runner says as it registers and connects,
+    /// and the jobs it runs.
+    ///
+    /// # Errors
+    ///
+    /// When there is no such runner, or the runtime cannot read its log.
+    pub async fn logs(&self, id: RunnerId, tail: LogTail) -> Result<Vec<LogLine>, RunnerError> {
+        Ok(self.runtime.logs(id, tail).await?)
     }
 
     fn image_for(&self, forge: Forge, key: Option<&str>) -> Result<&dyn RunnerImage, RunnerError> {
@@ -540,6 +551,39 @@ mod tests {
         service(&runtime).delete(runner.id()).await.unwrap();
 
         assert_eq!(runtime.runner(runner.id()), None);
+    }
+
+    #[tokio::test]
+    async fn reads_the_latest_lines_a_runner_logged() {
+        let runner = existing("https://github.com/otsobide/mindweaver", "builder");
+        let runtime = Arc::new(FakeRuntime::holding([runner.clone()]));
+        runtime.logged(
+            runner.id(),
+            [
+                "√ Connected to GitHub",
+                "Listening for Jobs",
+                "Running job: build",
+            ],
+        );
+
+        let lines = service(&runtime)
+            .logs(runner.id(), LogTail::new(2).unwrap())
+            .await
+            .unwrap();
+
+        let texts: Vec<&str> = lines.iter().map(LogLine::text).collect();
+        assert_eq!(texts, ["Listening for Jobs", "Running job: build"]);
+    }
+
+    #[tokio::test]
+    async fn says_when_there_is_no_runner_to_read_the_log_of() {
+        let runtime = Arc::new(FakeRuntime::default());
+
+        let read = service(&runtime)
+            .logs(RunnerId::generate(), LogTail::default())
+            .await;
+
+        assert!(matches!(read, Err(RunnerError::NotFound(_))));
     }
 
     #[tokio::test]

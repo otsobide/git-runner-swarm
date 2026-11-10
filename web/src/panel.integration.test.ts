@@ -183,6 +183,25 @@ describe('the panel', () => {
     expect(document.activeElement?.textContent?.trim()).toBe('New runner')
   })
 
+  it('opens a runner’s logs from its row, and hands focus back when they close', async () => {
+    const gateway = fleet()
+    const builder = gateway.runners.find((runner) => runner.name === 'builder')!
+    gateway.logs[builder.id] = [{ stream: 'stdout', text: 'Listening for Jobs' }]
+    const wrapper = await open(gateway)
+
+    await clickButton(wrapper, 'Logs', rowOf(wrapper, 'builder'))
+    const dialog = wrapper.find('[role="dialog"]')
+    expect(dialog.find('h2').text()).toBe('Logs of builder')
+    expect(dialog.find('pre').text()).toBe('Listening for Jobs')
+
+    await dialog.trigger('keydown', { key: 'Escape' })
+    await flushPromises()
+
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    expect(document.activeElement?.textContent?.trim()).toBe('Logs')
+    expect(rowOf(wrapper, 'builder').contains(document.activeElement)).toBe(true)
+  })
+
   describe('kept current', () => {
     beforeEach(() => vi.useFakeTimers())
     afterEach(() => vi.useRealTimers())

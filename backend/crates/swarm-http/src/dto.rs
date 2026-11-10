@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 use swarm_application::CreateRunner;
 use swarm_application::ports::RunnerImage;
 use swarm_domain::{
-    CpuLimit, EngineAccess, InvalidValue, MemoryLimit, OwnerName, RegistrationToken,
-    RepositoryName, Runner, RunnerFilter, RunnerLabel, RunnerLabels, RunnerLifecycle, RunnerLimits,
-    RunnerName, RunnerScope,
+    CpuLimit, EngineAccess, InvalidValue, LogLine, LogTail, MemoryLimit, OwnerName,
+    RegistrationToken, RepositoryName, Runner, RunnerFilter, RunnerLabel, RunnerLabels,
+    RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope,
 };
 
 /// A runner, as the API answers it.
@@ -231,6 +231,47 @@ impl ListQuery {
             filter = filter.with_search(&text);
         }
         Ok(filter)
+    }
+}
+
+/// How much of a runner's log to read, as query parameters.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct LogsQuery {
+    /// How many of the latest lines; 200 unless given.
+    lines: Option<String>,
+}
+
+impl LogsQuery {
+    pub(crate) fn into_tail(self) -> Result<LogTail, InvalidValue> {
+        present(self.lines).map_or(Ok(LogTail::default()), |lines| LogTail::parse(&lines))
+    }
+}
+
+/// A runner's latest log lines, oldest first, as the API answers them.
+#[derive(Debug, Serialize)]
+pub(crate) struct LogsResponse {
+    lines: Vec<LogLineResponse>,
+}
+
+#[derive(Debug, Serialize)]
+struct LogLineResponse {
+    /// `stdout` or `stderr`.
+    stream: &'static str,
+    text: String,
+}
+
+impl From<&[LogLine]> for LogsResponse {
+    fn from(lines: &[LogLine]) -> Self {
+        Self {
+            lines: lines
+                .iter()
+                .map(|line| LogLineResponse {
+                    stream: line.stream().as_str(),
+                    text: line.text().to_owned(),
+                })
+                .collect(),
+        }
     }
 }
 
@@ -458,6 +499,46 @@ mod tests {
                 "exit_code": 1,
                 "created_at": 1_700_000_000,
             })
+        );
+    }
+
+    #[test]
+    fn reads_how_many_log_lines_to_answer() {
+        let query = |body: Value| serde_json::from_value::<LogsQuery>(body).unwrap();
+
+        assert_eq!(query(json!({})).into_tail().unwrap(), LogTail::default());
+        assert_eq!(
+            query(json!({ "lines": " " })).into_tail().unwrap(),
+            LogTail::default()
+        );
+        assert_eq!(
+            query(json!({ "lines": "50" })).into_tail().unwrap().lines(),
+            50
+        );
+        assert_eq!(
+            query(json!({ "lines": "all" }))
+                .into_tail()
+                .unwrap_err()
+                .field(),
+            "lines"
+        );
+    }
+
+    #[test]
+    fn answers_log_lines_with_the_output_each_went_to() {
+        let lines = [
+            LogLine::new(swarm_domain::LogStream::Out, "Listening for Jobs"),
+            LogLine::new(swarm_domain::LogStream::Err, "Http response code: NotFound"),
+        ];
+
+        let answered = serde_json::to_value(LogsResponse::from(&lines[..])).unwrap();
+
+        assert_eq!(
+            answered,
+            json!({ "lines": [
+                { "stream": "stdout", "text": "Listening for Jobs" },
+                { "stream": "stderr", "text": "Http response code: NotFound" },
+            ] })
         );
     }
 

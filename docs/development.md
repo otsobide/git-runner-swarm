@@ -194,9 +194,17 @@ is the backend workspace's, in `backend/Cargo.toml`
    pulls it back and checks it serves on both platforms.
 
 The workflow logs in to Docker Hub as `otsobide` with the repository
-secret `DOCKERHUB_TOKEN`, a Docker Hub access token with read and write
-access. A failed publish is retried by re-running the workflow, on the
-same tag.
+secret `DOCKERHUB_TOKEN`, a Docker Hub access token. A failed publish is
+retried by re-running the workflow, on the same tag.
+
+The image's page on Docker Hub, its Overview, is `docs/dockerhub.md`,
+written for Docker Hub: links in it are absolute, as Docker Hub resolves
+no relative one. The `dockerhub` workflow
+(`.github/workflows/dockerhub.yml`) puts it there, with the short
+description, whenever it changes on `main`, or when run by hand
+(`gh workflow run dockerhub.yml`). Changing a description takes a token
+with read, write and delete access, so that is what `DOCKERHUB_TOKEN`
+is.
 
 ## Screenshots
 

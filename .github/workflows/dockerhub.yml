@@ -1,0 +1,41 @@
+# Keeps the image's Overview on Docker Hub as docs/dockerhub.md says,
+# and its short description: whenever either changes on main (as a
+# release brings it there), or when run by hand.
+#
+# Needs the repository secret DOCKERHUB_TOKEN to be an access token with
+# read, write and delete access: Docker Hub asks for all three to change
+# a repository's description.
+
+name: dockerhub
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/dockerhub.md
+      - .github/workflows/dockerhub.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dockerhub
+  cancel-in-progress: true
+
+jobs:
+  overview:
+    name: overview (docs/dockerhub.md, to Docker Hub)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v7
+
+      - name: Update the Overview and the short description
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          username: otsobide
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: otsobide/git-runner-swarm
+          readme-filepath: ./docs/dockerhub.md
+          short-description: Web panel to create and manage self-hosted GitHub Actions runners as Docker containers.

@@ -89,12 +89,13 @@ panel, which uses it to mark the input at fault.
 | `CpuLimit`          | the most CPUs a runner may use                  | 0.01 to 1024 CPUs, to a thousandth; kept exactly, in thousandths                          |
 | `MemoryLimit`       | the most memory a runner may use                | a size as Docker writes one (`512m`, `4g`); at least 6 MiB                                |
 | `RunnerLimits`      | a runner's limits                               | a CPU limit and a memory limit, each optional                                             |
+| `EngineAccess`      | whether jobs may use the runner's engine        | `isolated` (the default) or `host`                                                        |
 | `RunnerStatus`      | what its container is doing                     | `created`, `running`, `restarting`, `paused`, `exited` or `dead`                          |
 
 Built from these:
 
 - `RunnerDefinition`: what a runner was created as (id, forge, scope,
-  name, labels, lifecycle, limits), and the rule across runners: two runners
+  name, labels, lifecycle, limits, engine access), and the rule across runners: two runners
   **conflict** when they would register under the same name in the same
   scope, since the forge would let the second replace the first.
 - `Runner`: a definition plus what the runtime says of it now: image,
@@ -188,6 +189,7 @@ The `RunnerRuntime` adapter for a Docker engine, through `bollard`.
 | `git-runner-swarm.lifecycle` | `persistent` or `ephemeral`                                     |
 | `git-runner-swarm.cpus`      | its CPU limit, `1.5`; missing for none (since 0.2)              |
 | `git-runner-swarm.memory`    | its memory limit, `4g`; missing for none (since 0.2)            |
+| `git-runner-swarm.engine`    | `host` when its jobs are given Docker; missing if not (since 0.2) |
 
 Labels are fixed when a container is created, so a runner's definition
 never changes after creation: to change one, delete the runner and
@@ -196,6 +198,13 @@ a container an earlier panel made is still read, as the runner it was.
 
 A runner's limits are applied as Docker's own: the CPU limit as the
 container's `NanoCpus`, the memory limit as its `Memory`.
+
+A runner given the engine has the engine's socket bound into its
+container at `/var/run/docker.sock` (`Binds`), and joins the group
+owning it (`GroupAdd`). The runtime is told both as an `EngineSocket`:
+the socket's path on the host (`GRS_RUNNER_DOCKER_SOCKET`), which the
+engine resolves, and the group, which `swarm-server` reads from the
+socket the panel itself reaches Docker at.
 
 ### `swarm-github`: GitHub's official runner image
 

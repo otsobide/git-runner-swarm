@@ -11,6 +11,7 @@ with the repository's `compose.yaml`.
 | `GRS_RUNTIME`      | `docker`                                | `docker`, or `memory` to try the panel with nothing running.     |
 | `GRS_GITHUB_IMAGE` | `ghcr.io/actions/actions-runner:latest` | The image GitHub runners run.                                    |
 | `GRS_STOP_TIMEOUT` | `30`                                    | Seconds a runner is given to stop cleanly before it is killed.   |
+| `GRS_RUNNER_DOCKER_SOCKET` | `/var/run/docker.sock`          | Where Docker's socket is on the host, for runners given Docker.  |
 | `DOCKER_HOST`      | the local socket                        | Where Docker is, as for the Docker CLI.                          |
 | `RUST_LOG`         | `info`                                  | How much the panel logs.                                         |
 
@@ -124,6 +125,22 @@ registry.
 How many seconds **Stop** and **Delete** give a runner to stop cleanly
 (cancelling the job it is running and telling GitHub it is going
 offline) before Docker kills it. A whole number, `0` or more.
+
+## `GRS_RUNNER_DOCKER_SOCKET`
+
+Where Docker's socket is **on the host**, for the runners whose jobs are
+given the host's Docker to mount. It is a path on the host, not in the
+panel's container: Docker resolves it when it creates a runner's
+container. An absolute path; `/var/run/docker.sock` unless set.
+
+Runners given Docker also join the group owning the socket, so their
+user may use it. The panel finds that group from the socket it reaches
+Docker at itself, which is the host's when it is mounted into the
+panel's container, as `compose.yaml` does; it says which group at start,
+or warns that it cannot tell (for an engine reached over the network).
+
+For rootless Docker, mount its socket into the panel as below, and set
+`GRS_RUNNER_DOCKER_SOCKET: /run/user/1000/docker.sock`.
 
 ## `DOCKER_HOST`
 

@@ -4,6 +4,28 @@ Each release, and what it changed. Versions follow
 [Semantic Versioning](https://semver.org); while they are below 1.0,
 a minor release may change what an earlier one did.
 
+## 0.2.0, 2026-11-10
+
+### Added
+
+- **Limits**: a runner can be limited in the CPUs (`2`, `0.5`) and the
+  memory (`4g`, `512m`) it and its jobs may use, from the form or the
+  API (`cpus`, `memory`). They are Docker's own limits on its container,
+  and its row says what they are.
+- **The host's Docker for a runner's jobs**, only when asked: the host's
+  socket is mounted where the Docker CLI looks for it, and the runner's
+  user joins the group owning it, so jobs can build images and run
+  containers. The form warns what it costs, and the runner's row says it
+  has it. `GRS_RUNNER_DOCKER_SOCKET` says where the socket is on the
+  host, for rootless Docker.
+- **Logs**: each runner's row opens its last 200 lines, kept current,
+  and the API answers them at `GET /api/runners/{id}/logs`.
+
+### Compatible
+
+- Runners created by 0.1 are read as they were: without limits, and
+  without Docker.
+
 ## 0.1.1, 2026-11-09
 
 ### Fixed

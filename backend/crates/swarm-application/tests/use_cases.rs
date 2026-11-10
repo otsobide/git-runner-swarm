@@ -9,7 +9,7 @@ use swarm_application::ports::RunnerImage;
 use swarm_application::{CreateRunner, RunnerError, RunnerImages, RunnerService};
 use swarm_domain::{
     Forge, ImageReference, OwnerName, RegistrationToken, Runner, RunnerFilter, RunnerLabel,
-    RunnerLabels, RunnerLifecycle, RunnerName, RunnerScope, RunnerStatus, ScopeKind,
+    RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope, RunnerStatus, ScopeKind,
 };
 use swarm_github::GitHubOfficialImage;
 use swarm_memory::InMemoryRuntime;
@@ -28,6 +28,7 @@ fn command(url: &str, name: &str, labels: &str) -> CreateRunner {
         name: RunnerName::new(name).unwrap(),
         labels: RunnerLabels::parse_comma_separated(labels).unwrap(),
         lifecycle: RunnerLifecycle::Persistent,
+        limits: RunnerLimits::none(),
         token: RegistrationToken::new("AESOHC2SEXAMPLE").unwrap(),
         image: None,
     }

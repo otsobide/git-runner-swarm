@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use swarm_domain::{
     Forge, RegistrationToken, Runner, RunnerDefinition, RunnerFilter, RunnerId, RunnerLabels,
-    RunnerLifecycle, RunnerName, RunnerScope,
+    RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope,
 };
 use thiserror::Error;
 
@@ -24,6 +24,8 @@ pub struct CreateRunner {
     pub name: RunnerName,
     pub labels: RunnerLabels,
     pub lifecycle: RunnerLifecycle,
+    /// What it may use of its host.
+    pub limits: RunnerLimits,
     pub token: RegistrationToken,
     /// The key of the image to create it from; its forge's default if
     /// `None`.
@@ -105,7 +107,8 @@ impl RunnerService {
             command.name,
             command.labels,
             command.lifecycle,
-        );
+        )
+        .with_limits(command.limits);
 
         let runners = self.runtime.list().await?;
         if runners
@@ -245,6 +248,7 @@ mod tests {
             name: RunnerName::new(name).unwrap(),
             labels: RunnerLabels::parse_comma_separated("gpu").unwrap(),
             lifecycle: RunnerLifecycle::Persistent,
+            limits: RunnerLimits::none(),
             token: RegistrationToken::new("AESOHC2S").unwrap(),
             image: None,
         }
@@ -289,6 +293,29 @@ mod tests {
         assert_eq!(runner.definition().name().as_str(), "builder");
         assert_eq!(runner.image().as_str(), "github-official:latest");
         assert_eq!(runtime.runner(runner.id()), Some(runner));
+    }
+
+    #[tokio::test]
+    async fn creates_a_runner_limited_as_it_is_asked() {
+        let runtime = Arc::new(FakeRuntime::default());
+        let limits = RunnerLimits::new(
+            Some(swarm_domain::CpuLimit::parse("2").unwrap()),
+            Some(swarm_domain::MemoryLimit::parse("4g").unwrap()),
+        );
+
+        let runner = service(&runtime)
+            .create(CreateRunner {
+                limits,
+                ..command("https://github.com/otsobide/mindweaver", "builder")
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(runner.definition().limits(), limits);
+        assert_eq!(
+            runtime.runner(runner.id()).unwrap().definition().limits(),
+            limits
+        );
     }
 
     #[tokio::test]

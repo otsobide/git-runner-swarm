@@ -10,7 +10,7 @@ use swarm_application::CreateRunner;
 use swarm_application::ports::RunnerImage;
 use swarm_domain::{
     InvalidValue, OwnerName, RegistrationToken, RepositoryName, Runner, RunnerFilter, RunnerLabel,
-    RunnerLabels, RunnerLifecycle, RunnerName, RunnerScope,
+    RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope,
 };
 
 /// A runner, as the API answers it.
@@ -131,6 +131,7 @@ impl CreateRunnerRequest {
                 .map_or(Ok(RunnerLifecycle::default()), |lifecycle| {
                     lifecycle.parse()
                 })?,
+            limits: RunnerLimits::none(),
             token: RegistrationToken::new(self.token)?,
             image: present(self.image),
         })

@@ -120,6 +120,18 @@ the first: the panel refuses the second.
   no job ever runs where another ran. GitHub removes the runner once its
   job is done: to take another job, create a new runner.
 
+**Limits.** How much of the host the runner, its jobs included, may
+use. Left empty, it may use all of it.
+
+- **CPUs**: a number of CPUs' worth of time, whole or not: `2`, `0.5`.
+  A runner using more is slowed down, not stopped.
+- **Memory**: a size, as Docker writes sizes: `4g`, `512m`, `1.5g`
+  (`k`, `m`, `g` and `t` are kibibytes, mebibytes, gibibytes and
+  tebibytes). A job that would use more is killed, and fails.
+
+They are Docker's own limits on the runner's container
+(`docker run --cpus --memory`), and the runner's row says what they are.
+
 **Image.** The panel runs GitHub's official runner image,
 `ghcr.io/actions/actions-runner:latest` unless configured otherwise
 (`GRS_GITHUB_IMAGE`). When more images are configured, the form offers
@@ -250,7 +262,7 @@ hand:
 A runner created again under the same name takes the offline one's
 place, so removing it first is not necessary.
 
-A runner's URL, name, labels and kind cannot be changed: delete it and
+A runner's URL, name, labels, kind and limits cannot be changed: delete it and
 create it again, with a new token.
 
 ## Runners outlive the panel

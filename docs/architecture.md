@@ -86,12 +86,15 @@ panel, which uses it to mark the input at fault.
 | `ImageReference`    | a container image                               | 1–512 characters, no whitespace                                                           |
 | `Forge`             | which forge                                     | `github` (Gitea and Forgejo to come)                                                      |
 | `RunnerLifecycle`   | how many jobs a runner takes                    | `persistent` (job after job) or `ephemeral` (one job)                                     |
+| `CpuLimit`          | the most CPUs a runner may use                  | 0.01 to 1024 CPUs, to a thousandth; kept exactly, in thousandths                          |
+| `MemoryLimit`       | the most memory a runner may use                | a size as Docker writes one (`512m`, `4g`); at least 6 MiB                                |
+| `RunnerLimits`      | a runner's limits                               | a CPU limit and a memory limit, each optional                                             |
 | `RunnerStatus`      | what its container is doing                     | `created`, `running`, `restarting`, `paused`, `exited` or `dead`                          |
 
 Built from these:
 
 - `RunnerDefinition`: what a runner was created as (id, forge, scope,
-  name, labels, lifecycle), and the rule across runners: two runners
+  name, labels, lifecycle, limits), and the rule across runners: two runners
   **conflict** when they would register under the same name in the same
   scope, since the forge would let the second replace the first.
 - `Runner`: a definition plus what the runtime says of it now: image,
@@ -183,10 +186,16 @@ The `RunnerRuntime` adapter for a Docker engine, through `bollard`.
 | `git-runner-swarm.name`      | its name                                                        |
 | `git-runner-swarm.labels`    | its extra labels, comma-separated                               |
 | `git-runner-swarm.lifecycle` | `persistent` or `ephemeral`                                     |
+| `git-runner-swarm.cpus`      | its CPU limit, `1.5`; missing for none (since 0.2)              |
+| `git-runner-swarm.memory`    | its memory limit, `4g`; missing for none (since 0.2)            |
 
 Labels are fixed when a container is created, so a runner's definition
 never changes after creation: to change one, delete the runner and
-create it again.
+create it again. Labels added since the first release are optional, so
+a container an earlier panel made is still read, as the runner it was.
+
+A runner's limits are applied as Docker's own: the CPU limit as the
+container's `NanoCpus`, the memory limit as its `Memory`.
 
 ### `swarm-github`: GitHub's official runner image
 

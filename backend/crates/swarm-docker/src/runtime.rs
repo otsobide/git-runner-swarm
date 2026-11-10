@@ -230,9 +230,11 @@ pub(crate) fn container_name(id: RunnerId) -> String {
 }
 
 /// The container a runner runs in, as its launch spec says, with its
-/// definition in its labels. Docker's own init runs as PID 1, to reap what
-/// jobs leave behind and pass signals on to the runner.
+/// definition in its labels and limited as the definition asks. Docker's
+/// own init runs as PID 1, to reap what jobs leave behind and pass signals
+/// on to the runner.
 fn container_body(runner: &RunnerDefinition, spec: &LaunchSpec) -> ContainerCreateBody {
+    let limits = runner.limits();
     ContainerCreateBody {
         image: Some(spec.image.to_string()),
         cmd: (!spec.command.is_empty()).then(|| spec.command.clone()),
@@ -252,6 +254,12 @@ fn container_body(runner: &RunnerDefinition, spec: &LaunchSpec) -> ContainerCrea
                 }),
                 maximum_retry_count: None,
             }),
+            nano_cpus: limits
+                .cpus()
+                .map(|cpus| i64::from(cpus.millis()) * 1_000_000),
+            memory: limits
+                .memory()
+                .map(|memory| i64::try_from(memory.bytes()).unwrap_or(i64::MAX)),
             ..HostConfig::default()
         }),
         ..ContainerCreateBody::default()
@@ -370,7 +378,10 @@ fn unless_already_done(id: RunnerId, result: Result<(), DockerError>) -> Result<
 mod tests {
     use bollard::models::{ContainerConfig, ContainerState};
     use swarm_application::ports::EnvironmentVariable;
-    use swarm_domain::{Forge, RunnerLabels, RunnerLifecycle, RunnerName, RunnerScope};
+    use swarm_domain::{
+        CpuLimit, Forge, MemoryLimit, RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName,
+        RunnerScope,
+    };
 
     use super::*;
 
@@ -444,6 +455,31 @@ mod tests {
             ["RUNNER_NAME=builder", "RUNNER_TOKEN=AESOHC2S"]
         );
         assert_eq!(labels::decode(&body.labels.unwrap()).unwrap(), definition);
+    }
+
+    #[test]
+    fn limits_the_container_as_the_runner_asks() {
+        let definition = definition().with_limits(RunnerLimits::new(
+            Some(CpuLimit::parse("1.5").unwrap()),
+            Some(MemoryLimit::parse("512m").unwrap()),
+        ));
+
+        let host = container_body(&definition, &spec(RestartPolicy::Never))
+            .host_config
+            .unwrap();
+
+        assert_eq!(host.nano_cpus, Some(1_500_000_000));
+        assert_eq!(host.memory, Some(512 * 1024 * 1024));
+    }
+
+    #[test]
+    fn leaves_the_container_unlimited_unless_asked() {
+        let host = container_body(&definition(), &spec(RestartPolicy::Never))
+            .host_config
+            .unwrap();
+
+        assert_eq!(host.nano_cpus, None);
+        assert_eq!(host.memory, None);
     }
 
     #[test]

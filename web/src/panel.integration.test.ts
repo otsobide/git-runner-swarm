@@ -120,6 +120,21 @@ describe('the panel', () => {
     expect(racks(wrapper)[0]).toEqual({ owner: 'acme', runners: ['tester', 'deployer'] })
   })
 
+  it('creates a limited runner, and shows its limits in its row', async () => {
+    const wrapper = await open(fleet())
+
+    await clickButton(wrapper, 'New runner')
+    await wrapper.find('input[type="url"]').setValue('https://github.com/acme/site')
+    await wrapper.find('input[type="password"]').setValue('AESOHC2S')
+    await wrapper.findAll('[role="dialog"] input[type="text"]')[0]!.setValue('small')
+    await select(wrapper, 'CPUs').setValue('0.5')
+    await select(wrapper, 'Memory').setValue('512m')
+    await wrapper.find('[role="dialog"] form').trigger('submit')
+    await flushPromises()
+
+    expect(rowOf(wrapper, 'small').textContent).toContain('Up to 0.5 CPUs and 512 MiB of memory')
+  })
+
   it('keeps what was typed when the API refuses a value, and points at it', async () => {
     const gateway = fleet()
     const wrapper = await open(gateway)

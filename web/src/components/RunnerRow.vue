@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
-import { canStart, canStop, createdAgo, healthOf, type Runner, statusText } from '../core/runner'
+import { canStart, canStop, createdAgo, healthOf, limitsText, type Runner, statusText } from '../core/runner'
 import StatusLamp from './StatusLamp.vue'
 
 const props = defineProps<{ runner: Runner; busy: boolean }>()
 const emit = defineEmits<{ start: [Runner]; stop: [Runner]; remove: [Runner] }>()
 
 const health = computed(() => healthOf(props.runner))
+const limits = computed(() => limitsText(props.runner))
 /** Deleting asks once more, in the row itself, before it is done. */
 const confirming = ref(false)
 
@@ -26,11 +27,14 @@ function remove() {
       <p class="status">{{ statusText(runner) }}</p>
     </div>
 
-    <p class="serves">
-      <span v-if="runner.repository !== null">{{ runner.repository }}</span>
-      <span v-else class="soft">Every repository</span>
-      <span v-if="runner.lifecycle === 'ephemeral'" class="soft">, one job at a time</span>
-    </p>
+    <div class="serves">
+      <p>
+        <span v-if="runner.repository !== null">{{ runner.repository }}</span>
+        <span v-else class="soft">Every repository</span>
+        <span v-if="runner.lifecycle === 'ephemeral'" class="soft">, one job at a time</span>
+      </p>
+      <p v-if="limits !== null" class="limits soft">{{ limits }}</p>
+    </div>
 
     <ul class="labels" aria-label="Labels">
       <li v-for="label in runner.labels" :key="label" class="label mono">{{ label }}</li>

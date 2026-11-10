@@ -32,6 +32,8 @@ loudly.
   "name": "gpu-1",
   "labels": ["gpu", "cuda"],
   "lifecycle": "persistent",
+  "cpus": "2",
+  "memory": "8g",
   "image": "ghcr.io/actions/actions-runner:latest",
   "status": "running",
   "exit_code": null,
@@ -50,6 +52,8 @@ loudly.
 | `name`       | string          | What GitHub lists it as.                                                                            |
 | `labels`     | array of string | Its extra labels, beyond the ones GitHub gives every runner.                                        |
 | `lifecycle`  | string          | `persistent` (job after job) or `ephemeral` (one job).                                              |
+| `cpus`       | string or null  | The most CPUs it may use, `1.5`; `null` for no limit.                                               |
+| `memory`     | string or null  | The most memory it may use, in the largest whole unit, `4g` or `1536m`; `null` for no limit.        |
 | `image`      | string          | The image its container runs.                                                                       |
 | `status`     | string          | Its container's state: `created`, `running`, `restarting`, `paused`, `exited` or `dead`.            |
 | `exit_code`  | number or null  | What its container last exited with, while `exited`, `restarting` or `dead`; `null` otherwise.      |
@@ -122,6 +126,8 @@ curl 'http://localhost:8080/api/runners?owner=lumen-labs&label=gpu'
     "name": "gpu-1",
     "labels": ["gpu", "cuda"],
     "lifecycle": "persistent",
+    "cpus": "2",
+    "memory": "8g",
     "image": "ghcr.io/actions/actions-runner:latest",
     "status": "running",
     "exit_code": null,
@@ -144,6 +150,8 @@ with GitHub happens in the container, after that.
 | `token`     | yes      | The registration token GitHub shows for that repository or organization.                      |
 | `labels`    | no       | Extra labels: each 1–100 letters, digits, `-`, `_` or `.`. Empty ones are dropped.              |
 | `lifecycle` | no       | `persistent` (the default) or `ephemeral`.                                                     |
+| `cpus`      | no       | The most CPUs it may use: a number or a string, from `0.01` to `1024`, to a thousandth.        |
+| `memory`    | no       | The most memory it may use: `512m`, `4g`, `1.5g` (`k`, `m`, `g`, `t`, or bytes); at least 6 MiB. |
 | `image`     | no       | The `key` of an image from `GET /api/images`; the forge's default if left out or empty.        |
 | `forge`     | no       | `github` (the default).                                                                        |
 
@@ -158,7 +166,9 @@ curl -X POST http://localhost:8080/api/runners \
         "url": "https://github.com/lumen-labs/inference",
         "name": "gpu-1",
         "token": "<registration token>",
-        "labels": ["gpu", "cuda"]
+        "labels": ["gpu", "cuda"],
+        "cpus": 2,
+        "memory": "8g"
       }'
 ```
 
@@ -193,8 +203,8 @@ Every failure is answered with a status and a body saying why:
 
 `field` is there when a single value is to blame, named as the domain
 names it: `URL`, `owner` or `repository` (a part of the URL), `runner
-name`, `registration token`, `label`, `lifecycle`, `image`, `forge`,
-`scope` or `status`.
+name`, `registration token`, `label`, `lifecycle`, `CPU limit`,
+`memory limit`, `image`, `forge`, `scope` or `status`.
 
 | Status | When                                                                                        |
 | ------ | ------------------------------------------------------------------------------------------- |

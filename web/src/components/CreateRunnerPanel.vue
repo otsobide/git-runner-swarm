@@ -33,6 +33,7 @@ const form = reactive({
   lifecycle: 'persistent' as Lifecycle,
   cpus: '',
   memory: '',
+  hostDocker: false,
   image: props.images[0]?.key ?? '',
 })
 const fieldErrors = reactive<Partial<Record<Field, string>>>({})
@@ -61,6 +62,7 @@ async function submit() {
     // A limit left blank is no limit.
     if (form.cpus.trim() !== '') asked.cpus = form.cpus.trim()
     if (form.memory.trim() !== '') asked.memory = form.memory.trim()
+    if (form.hostDocker) asked.host_docker = true
     const runner = await props.create(asked)
     emit('created', runner)
   } catch (error) {
@@ -225,6 +227,20 @@ function sentence(message: string): string {
           <p :id="`${id}-limits-hint`" class="hint">
             What the runner and its jobs may use of this host. Left empty, they may use all of it.
           </p>
+        </fieldset>
+
+        <fieldset class="field">
+          <legend>Docker</legend>
+          <label class="choice">
+            <input v-model="form.hostDocker" type="checkbox" :aria-describedby="`${id}-docker-hint`" />
+            <span>
+              <strong>Give its jobs this host’s Docker</strong>
+              <span :id="`${id}-docker-hint`" class="hint">
+                So they can build images and run containers. They then control this host as root does: only for
+                repositories whose every workflow you trust.
+              </span>
+            </span>
+          </label>
         </fieldset>
 
         <div v-if="images.length > 1" class="field">

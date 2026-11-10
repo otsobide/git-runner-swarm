@@ -34,6 +34,7 @@ function remove() {
         <span v-if="runner.lifecycle === 'ephemeral'" class="soft">, one job at a time</span>
       </p>
       <p v-if="limits !== null" class="limits soft">{{ limits }}</p>
+      <p v-if="runner.host_docker" class="engine soft">Its jobs use this host’s Docker</p>
     </div>
 
     <ul class="labels" aria-label="Labels">

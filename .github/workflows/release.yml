@@ -4,7 +4,8 @@
 # serves.
 #
 # Needs the repository secret DOCKERHUB_TOKEN: an access token of the
-# Docker Hub account the image belongs to, with read and write access.
+# Docker Hub account the image belongs to, with read and write access at
+# least (the dockerhub workflow, sharing it, needs delete access too).
 # Tag a release only once CI has passed on the commit tagged.
 
 name: release

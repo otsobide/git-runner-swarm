@@ -49,11 +49,20 @@ describe('RunnerRow', () => {
     expect(row(aRunner()).find('.engine').exists()).toBe(false)
   })
 
+  it('opens the runner’s logs, whatever it is doing', async () => {
+    const runner = aRunner({ status: 'exited', exit_code: 1 })
+    const wrapper = row(runner, true)
+
+    await button(wrapper, 'Logs').trigger('click')
+
+    expect(wrapper.emitted('logs')).toEqual([[runner]])
+  })
+
   it('offers to stop a running runner', async () => {
     const runner = aRunner({ status: 'running' })
     const wrapper = row(runner)
 
-    expect(buttons(wrapper)).toEqual(['Stop', 'Delete'])
+    expect(buttons(wrapper)).toEqual(['Stop', 'Logs', 'Delete'])
     await button(wrapper, 'Stop').trigger('click')
     expect(wrapper.emitted('stop')).toEqual([[runner]])
   })
@@ -62,7 +71,7 @@ describe('RunnerRow', () => {
     const runner = aRunner({ status: 'exited', exit_code: 0 })
     const wrapper = row(runner)
 
-    expect(buttons(wrapper)).toEqual(['Start', 'Delete'])
+    expect(buttons(wrapper)).toEqual(['Start', 'Logs', 'Delete'])
     await button(wrapper, 'Start').trigger('click')
     expect(wrapper.emitted('start')).toEqual([[runner]])
   })
@@ -85,13 +94,14 @@ describe('RunnerRow', () => {
     await button(wrapper, 'Delete').trigger('click')
     await button(wrapper, 'Keep').trigger('click')
 
-    expect(buttons(wrapper)).toEqual(['Stop', 'Delete'])
+    expect(buttons(wrapper)).toEqual(['Stop', 'Logs', 'Delete'])
     expect(wrapper.emitted('remove')).toBeUndefined()
   })
 
-  it('offers nothing while something is being done to the runner', () => {
+  it('offers nothing but its logs while something is being done to the runner', () => {
     const wrapper = row(aRunner(), true)
 
-    expect(wrapper.findAll('button').every((button) => button.attributes('disabled') !== undefined)).toBe(true)
+    const enabled = wrapper.findAll('button').filter((button) => button.attributes('disabled') === undefined)
+    expect(enabled.map((button) => button.text())).toEqual(['Logs'])
   })
 })

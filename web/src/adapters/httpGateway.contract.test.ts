@@ -119,6 +119,20 @@ describe.skipIf(api === undefined)('httpGateway against the API', () => {
     expect(isolated.host_docker).toBe(false)
   })
 
+  it('reads a runner’s log in the shape the panel reads', async () => {
+    const runner = await create('logged')
+
+    const lines = await gateway.runnerLogs(runner.id, 50)
+
+    expect(Array.isArray(lines)).toBe(true)
+    expect(lines.length).toBeLessThanOrEqual(50)
+    for (const line of lines) {
+      expect(Object.keys(line).sort()).toEqual(['stream', 'text'])
+      expect(['stdout', 'stderr']).toContain(line.stream)
+      expect(typeof line.text).toBe('string')
+    }
+  })
+
   it('stops and starts a runner, answering it in its new state', async () => {
     const runner = await create('lifecycle')
 

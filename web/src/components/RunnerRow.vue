@@ -5,7 +5,7 @@ import { canStart, canStop, createdAgo, healthOf, limitsText, type Runner, statu
 import StatusLamp from './StatusLamp.vue'
 
 const props = defineProps<{ runner: Runner; busy: boolean }>()
-const emit = defineEmits<{ start: [Runner]; stop: [Runner]; remove: [Runner] }>()
+const emit = defineEmits<{ start: [Runner]; stop: [Runner]; remove: [Runner]; logs: [Runner] }>()
 
 const health = computed(() => healthOf(props.runner))
 const limits = computed(() => limitsText(props.runner))
@@ -56,6 +56,7 @@ function remove() {
         <button v-if="canStart(runner)" class="button" type="button" :disabled="busy" @click="emit('start', runner)">
           Start
         </button>
+        <button class="button" type="button" :data-logs-of="runner.id" @click="emit('logs', runner)">Logs</button>
         <button class="button button--danger" type="button" :disabled="busy" @click="confirming = true">
           Delete
         </button>

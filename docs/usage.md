@@ -11,7 +11,7 @@ quick start, see the [README](../README.md); for the settings, see
 - [Finding runners](#finding-runners)
 - [Stopping, starting and deleting](#stopping-starting-and-deleting)
 - [Runners outlive the panel](#runners-outlive-the-panel)
-- [Looking inside a runner](#looking-inside-a-runner)
+- [Looking inside a runner](#looking-inside-a-runner): its logs
 - [Troubleshooting](#troubleshooting)
 - [Removing everything](#removing-everything)
 
@@ -320,7 +320,16 @@ of it in the container's labels. So:
 
 ## Looking inside a runner
 
-A runner's container is `git-runner-swarm-<id>`, its id being the one
+**Logs**, in a runner's row, opens what the runner has written lately:
+its last 200 lines, registering with GitHub, connecting, and the jobs it
+runs, oldest first, with the newest kept in view as they come, every
+few seconds. Scrolled up, the log stays where it was. The **Logs**
+button is there whatever the runner is doing, so a runner that failed
+or keeps restarting can say why.
+
+![The logs of a runner, beside the panel](images/runner-logs.png)
+
+From a shell, a runner's container is `git-runner-swarm-<id>`, its id being the one
 the API gives (or the end of its container's name in `docker ps`):
 
 ```sh
@@ -343,8 +352,8 @@ docker compose logs -f panel
 ## Troubleshooting
 
 **A new runner shows *Restarting after exiting with 1*, and never
-appears on GitHub.** It could not register. Its logs (`docker logs
-git-runner-swarm-<id>`) say why; most often:
+appears on GitHub.** It could not register. Its **Logs** say why; most
+often:
 
 - the token expired (an hour after GitHub showed it);
 - the token is for another repository or organization than the URL;

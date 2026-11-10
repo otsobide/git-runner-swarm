@@ -111,6 +111,7 @@ panel.
 | `filters.spec.ts`     | Runners racked by owner; searching, and filtering by owner, repository, status and label; no match, and clearing. |
 | `statuses.spec.ts`    | A runner failing, restarting, and finishing its one job, as the panel shows them.                                 |
 | `persistence.spec.ts` | Runners outliving the panel: restarted, it finds them again.                                                      |
+| `logs.spec.ts`        | A runner's logs from its row: what its container wrote, kept current while open, and why a runner failed.         |
 
 **The stand-in runner image** is laid out like GitHub's (a `runner`
 user, `/home/runner`, `config.sh` and `run.sh`), so the panel's own

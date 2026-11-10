@@ -16,8 +16,9 @@ use swarm_application::ports::{
 };
 use swarm_docker::{DockerRuntime, EngineSocket};
 use swarm_domain::{
-    CpuLimit, EngineAccess, Forge, ImageReference, MemoryLimit, RunnerDefinition, RunnerId,
-    RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope, RunnerStatus,
+    CpuLimit, EngineAccess, Forge, ImageReference, LogLine, LogStream, LogTail, MemoryLimit,
+    RunnerDefinition, RunnerId, RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName,
+    RunnerScope, RunnerStatus,
 };
 
 const IMAGE: &str = "busybox:1.37";
@@ -208,6 +209,65 @@ async fn gives_the_engine_to_a_runner_that_asks_for_it() {
     assert_eq!(host.group_add, Some(vec!["4242".to_owned()]));
     let found = runtime.find(definition.id()).await.unwrap().unwrap();
     assert_eq!(found.definition().engine_access(), EngineAccess::Host);
+}
+
+#[tokio::test]
+#[ignore = "needs a Docker engine; run with --include-ignored"]
+async fn reads_the_latest_lines_a_runner_logged() {
+    let runtime = runtime();
+    let definition = definition("logging");
+    let _removed = Removed(definition.id());
+    let mut spec = sleeping();
+    // Docker logs each output on its own, so lines written to both at
+    // once may be logged in either order: a second apart, they are not.
+    spec.command = [
+        "sh",
+        "-c",
+        "echo oops >&2; sleep 1; echo one; echo two; exec sleep 300",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    runtime
+        .ensure_image(&ImageReference::new(IMAGE).unwrap())
+        .await
+        .unwrap();
+    runtime.launch(&definition, &spec).await.unwrap();
+
+    let mut written = Vec::new();
+    for _ in 0..50 {
+        written = runtime
+            .logs(definition.id(), LogTail::new(3).unwrap())
+            .await
+            .unwrap();
+        if written.len() == 3 {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let latest = runtime
+        .logs(definition.id(), LogTail::new(2).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        written,
+        [
+            LogLine::new(LogStream::Err, "oops"),
+            LogLine::new(LogStream::Out, "one"),
+            LogLine::new(LogStream::Out, "two"),
+        ]
+    );
+    assert_eq!(
+        latest,
+        [
+            LogLine::new(LogStream::Out, "one"),
+            LogLine::new(LogStream::Out, "two"),
+        ]
+    );
+    assert!(matches!(
+        runtime.logs(RunnerId::generate(), LogTail::default()).await,
+        Err(RuntimeError::NotFound(_))
+    ));
 }
 
 #[tokio::test]

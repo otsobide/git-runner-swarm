@@ -10,7 +10,9 @@ use serde_json::{Value, json};
 use swarm_application::RunnerService;
 use swarm_domain::RunnerId;
 
-use crate::dto::{CreateRunnerRequest, ImageResponse, ListQuery, RunnerResponse};
+use crate::dto::{
+    CreateRunnerRequest, ImageResponse, ListQuery, LogsQuery, LogsResponse, RunnerResponse,
+};
 use crate::error::ApiError;
 
 type Service = State<Arc<RunnerService>>;
@@ -25,6 +27,8 @@ type Service = State<Arc<RunnerService>>;
 /// - `GET /runners/{id}`, `DELETE /runners/{id}`: a runner, and deleting
 ///   it.
 /// - `POST /runners/{id}/start`, `POST /runners/{id}/stop`.
+/// - `GET /runners/{id}/logs`: the latest lines it logged, as many as the
+///   query parameter `lines` says, 200 unless it is given.
 pub fn api(service: Arc<RunnerService>) -> Router {
     Router::new()
         .route("/health", get(health))
@@ -33,6 +37,7 @@ pub fn api(service: Arc<RunnerService>) -> Router {
         .route("/runners/{id}", get(show).delete(delete))
         .route("/runners/{id}/start", post(start))
         .route("/runners/{id}/stop", post(stop))
+        .route("/runners/{id}/logs", get(logs))
         .fallback(no_such_endpoint)
         .with_state(service)
 }
@@ -95,6 +100,16 @@ async fn stop(
 async fn delete(State(service): Service, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
     service.delete(runner_id(&id)?).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn logs(
+    State(service): Service,
+    Path(id): Path<String>,
+    query: Result<Query<LogsQuery>, QueryRejection>,
+) -> Result<Json<LogsResponse>, ApiError> {
+    let Query(query) = query.map_err(|rejection| ApiError::Malformed(rejection.body_text()))?;
+    let lines = service.logs(runner_id(&id)?, query.into_tail()?).await?;
+    Ok(Json(LogsResponse::from(lines.as_slice())))
 }
 
 async fn no_such_endpoint() -> ApiError {

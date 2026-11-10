@@ -3,6 +3,7 @@ use std::time::SystemTime;
 
 use async_trait::async_trait;
 use bollard::Docker;
+use bollard::container::LogOutput;
 use bollard::errors::Error as DockerError;
 use bollard::models::{
     ContainerCreateBody, ContainerInspectResponse, ContainerStateStatusEnum, HostConfig,
@@ -10,12 +11,14 @@ use bollard::models::{
 };
 use bollard::query_parameters::{
     CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions,
-    RemoveContainerOptions, StartContainerOptions, StopContainerOptions,
+    LogsOptionsBuilder, RemoveContainerOptions, StartContainerOptions, StopContainerOptions,
 };
 use futures_util::StreamExt;
 use futures_util::future::join_all;
 use swarm_application::ports::{LaunchSpec, RestartPolicy, RunnerRuntime, RuntimeError};
-use swarm_domain::{ImageReference, Runner, RunnerDefinition, RunnerId, RunnerStatus};
+use swarm_domain::{
+    ImageReference, LogLine, LogStream, LogTail, Runner, RunnerDefinition, RunnerId, RunnerStatus,
+};
 
 use crate::engine_socket::EngineSocket;
 use crate::labels;
@@ -236,6 +239,45 @@ impl RunnerRuntime for DockerRuntime {
             .await
             .map_err(|error| runner_error(id, error))
     }
+
+    /// The container's latest lines, from both its outputs, in the order
+    /// they were written.
+    async fn logs(&self, id: RunnerId, tail: LogTail) -> Result<Vec<LogLine>, RuntimeError> {
+        let options = LogsOptionsBuilder::new()
+            .stdout(true)
+            .stderr(true)
+            .tail(&tail.lines().to_string())
+            .build();
+        let mut frames = self.docker.logs(&container_name(id), Some(options));
+        let mut lines = Vec::new();
+        while let Some(frame) = frames.next().await {
+            let (stream, message) = match frame.map_err(|error| runner_error(id, error))? {
+                LogOutput::StdOut { message } | LogOutput::Console { message } => {
+                    (LogStream::Out, message)
+                }
+                LogOutput::StdErr { message } => (LogStream::Err, message),
+                LogOutput::StdIn { .. } => continue,
+            };
+            lines.extend(lines_of(stream, &message));
+        }
+        let beyond = lines.len().saturating_sub(tail.lines() as usize);
+        lines.drain(..beyond);
+        Ok(lines)
+    }
+}
+
+/// The lines in what a container wrote at once, without their breaks: as
+/// text, any byte that is not UTF-8 replaced, and a trailing break ending
+/// the last line rather than starting an empty one.
+fn lines_of(stream: LogStream, written: &[u8]) -> Vec<LogLine> {
+    let text = String::from_utf8_lossy(written);
+    let text = text.strip_suffix('\n').unwrap_or(&text);
+    if text.is_empty() {
+        return Vec::new();
+    }
+    text.split('\n')
+        .map(|line| LogLine::new(stream, line.strip_suffix('\r').unwrap_or(line)))
+        .collect()
 }
 
 /// The name of the container a runner runs in.
@@ -561,6 +603,31 @@ mod tests {
 
         assert_eq!(host.binds, None);
         assert_eq!(host.group_add, None);
+    }
+
+    #[test]
+    fn splits_what_a_container_wrote_into_lines() {
+        let lines = lines_of(LogStream::Err, b"first\r\nsecond\n\nfourth\n");
+
+        let texts: Vec<&str> = lines.iter().map(LogLine::text).collect();
+        assert_eq!(texts, ["first", "second", "", "fourth"]);
+        assert!(lines.iter().all(|line| line.stream() == LogStream::Err));
+    }
+
+    #[test]
+    fn keeps_a_line_written_without_a_break_and_nothing_of_nothing() {
+        let lines = lines_of(LogStream::Out, b"Listening for Jobs");
+
+        assert_eq!(lines, [LogLine::new(LogStream::Out, "Listening for Jobs")]);
+        assert_eq!(lines_of(LogStream::Out, b""), []);
+        assert_eq!(lines_of(LogStream::Out, b"\n"), []);
+    }
+
+    #[test]
+    fn reads_what_is_not_utf8_without_failing() {
+        let lines = lines_of(LogStream::Out, b"caf\xe9\n");
+
+        assert_eq!(lines[0].text(), "caf\u{fffd}");
     }
 
     #[test]

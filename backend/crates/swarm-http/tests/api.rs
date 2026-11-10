@@ -402,6 +402,30 @@ async fn deletes_a_runner() {
 }
 
 #[tokio::test]
+async fn answers_a_runners_log_and_refuses_to_read_too_much_of_it() {
+    let panel = panel();
+    let created = panel
+        .created("https://github.com/otsobide/mindweaver", "builder")
+        .await;
+    let id = created["id"].as_str().unwrap();
+
+    let read = panel.get(&format!("/api/runners/{id}/logs?lines=10")).await;
+    let too_much = panel
+        .get(&format!("/api/runners/{id}/logs?lines=9999"))
+        .await;
+    let unknown = panel
+        .get("/api/runners/00000000-0000-4000-8000-000000000000/logs")
+        .await;
+
+    // Runners kept in memory run nothing, and so log nothing.
+    assert_eq!(read.status, StatusCode::OK);
+    assert_eq!(read.body, json!({ "lines": [] }));
+    assert_eq!(too_much.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(too_much.body["field"], "lines");
+    assert_eq!(unknown.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn answers_an_endpoint_it_does_not_have_in_json() {
     let answer = panel().get("/api/nothing-here").await;
 

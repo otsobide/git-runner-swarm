@@ -35,6 +35,7 @@ function expectRunner(value: Runner) {
       'cpus',
       'memory',
       'host_docker',
+      'host_gpu',
       'image',
       'status',
       'exit_code',
@@ -50,6 +51,7 @@ function expectRunner(value: Runner) {
   expect(value.cpus === null || typeof value.cpus === 'string').toBe(true)
   expect(value.memory === null || typeof value.memory === 'string').toBe(true)
   expect(typeof value.host_docker).toBe('boolean')
+  expect(typeof value.host_gpu).toBe('boolean')
   expect(['created', 'running', 'restarting', 'paused', 'exited', 'dead']).toContain(value.status)
   expect(value.exit_code === null || Number.isInteger(value.exit_code)).toBe(true)
   expect(Number.isInteger(value.created_at)).toBe(true)
@@ -117,6 +119,14 @@ describe.skipIf(api === undefined)('httpGateway against the API', () => {
 
     expect(given.host_docker).toBe(true)
     expect(isolated.host_docker).toBe(false)
+  })
+
+  it('creates a runner given the host’s GPUs, answering that it is', async () => {
+    const given = await create('given-gpus', { host_gpu: true })
+    const without = await create('without-gpus')
+
+    expect(given.host_gpu).toBe(true)
+    expect(without.host_gpu).toBe(false)
   })
 
   it('reads a runner’s log in the shape the panel reads', async () => {

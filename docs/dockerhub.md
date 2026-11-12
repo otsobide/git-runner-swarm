@@ -53,7 +53,8 @@ the runner registers with GitHub as its container starts.
 - **Shows each runner's logs**, kept current, so a runner that fails
   says why.
 - **Limits** the CPU and memory each runner may use, and, only when
-  asked, gives a runner's jobs the host's Docker to build images with.
+  asked, gives a runner's jobs the host's Docker to build images with,
+  or the host's GPUs (AMD, Intel or NVIDIA) to render and compute on.
 - **Stores nothing but Docker**: a runner is a container, with its
   definition in the container's labels. The panel can be stopped or
   upgraded while the runners carry on.
@@ -78,6 +79,7 @@ Environment variables, each optional:
 | `GRS_GITHUB_IMAGE`         | `ghcr.io/actions/actions-runner:latest` | The image GitHub runners run: a pinned tag, a mirror, your own. |
 | `GRS_STOP_TIMEOUT`         | `30`                                    | Seconds a runner is given to stop cleanly before it is killed. |
 | `GRS_RUNNER_DOCKER_SOCKET` | `/var/run/docker.sock`                  | Docker's socket on the host, for runners given Docker.         |
+| `GRS_RUNNER_GPUS`          | `/dev/dri`                              | The GPUs runners given the host's get: device paths, `nvidia`. |
 | `GRS_LISTEN`               | `0.0.0.0:8080`                          | The address the panel listens on, in its container.            |
 | `RUST_LOG`                 | `info`                                  | How much the panel logs.                                       |
 

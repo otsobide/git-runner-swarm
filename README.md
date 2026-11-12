@@ -20,7 +20,8 @@ and which are failing, and start, stop or delete them.
   says why.
 - **Limits** the CPU and memory each runner may use, and, only when
   asked, gives a runner's jobs the host's Docker to build images and run
-  containers with.
+  containers with, or the host's GPUs (AMD, Intel or NVIDIA) to render,
+  encode video and compute on.
 - **Stores nothing but Docker**: a runner is a container, with its
   definition in the container's labels. The panel can be stopped or
   upgraded while the runners carry on.

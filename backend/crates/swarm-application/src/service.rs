@@ -2,7 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use swarm_domain::{
-    EngineAccess, Forge, LogLine, LogTail, RegistrationToken, Runner, RunnerDefinition,
+    EngineAccess, Forge, GpuAccess, LogLine, LogTail, RegistrationToken, Runner, RunnerDefinition,
     RunnerFilter, RunnerId, RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope,
 };
 use thiserror::Error;
@@ -28,6 +28,8 @@ pub struct CreateRunner {
     pub limits: RunnerLimits,
     /// Whether its jobs may use the engine it runs on.
     pub engine_access: EngineAccess,
+    /// Whether its jobs may use its host's GPUs.
+    pub gpu_access: GpuAccess,
     pub token: RegistrationToken,
     /// The key of the image to create it from; its forge's default if
     /// `None`.
@@ -111,7 +113,8 @@ impl RunnerService {
             command.lifecycle,
         )
         .with_limits(command.limits)
-        .with_engine_access(command.engine_access);
+        .with_engine_access(command.engine_access)
+        .with_gpu_access(command.gpu_access);
 
         let runners = self.runtime.list().await?;
         if runners
@@ -264,6 +267,7 @@ mod tests {
             lifecycle: RunnerLifecycle::Persistent,
             limits: RunnerLimits::none(),
             engine_access: EngineAccess::Isolated,
+            gpu_access: GpuAccess::None,
             token: RegistrationToken::new("AESOHC2S").unwrap(),
             image: None,
         }
@@ -358,6 +362,35 @@ mod tests {
             EngineAccess::Isolated
         );
         assert_eq!(given.definition().engine_access(), EngineAccess::Host);
+    }
+
+    #[tokio::test]
+    async fn gives_a_runners_jobs_the_hosts_gpus_only_when_asked() {
+        let runtime = Arc::new(FakeRuntime::default());
+        let service = service(&runtime);
+
+        let without = service
+            .create(command("https://github.com/otsobide/mindweaver", "cpu"))
+            .await
+            .unwrap();
+        let given = service
+            .create(CreateRunner {
+                gpu_access: GpuAccess::Host,
+                ..command("https://github.com/otsobide/mindweaver", "gpu")
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(without.definition().gpu_access(), GpuAccess::None);
+        assert_eq!(given.definition().gpu_access(), GpuAccess::Host);
+        assert_eq!(
+            runtime
+                .runner(given.id())
+                .unwrap()
+                .definition()
+                .gpu_access(),
+            GpuAccess::Host
+        );
     }
 
     #[tokio::test]

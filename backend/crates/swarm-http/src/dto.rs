@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use swarm_application::CreateRunner;
 use swarm_application::ports::RunnerImage;
 use swarm_domain::{
-    CpuLimit, EngineAccess, InvalidValue, LogLine, LogTail, MemoryLimit, OwnerName,
+    CpuLimit, EngineAccess, GpuAccess, InvalidValue, LogLine, LogTail, MemoryLimit, OwnerName,
     RegistrationToken, RepositoryName, Runner, RunnerFilter, RunnerLabel, RunnerLabels,
     RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope,
 };
@@ -184,6 +184,7 @@ impl CreateRunnerRequest {
             } else {
                 EngineAccess::Isolated
             },
+            gpu_access: GpuAccess::None,
             token: RegistrationToken::new(self.token)?,
             image: present(self.image),
         })

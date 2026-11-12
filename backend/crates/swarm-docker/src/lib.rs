@@ -5,8 +5,10 @@
 //! there are.
 
 mod engine_socket;
+mod gpu_devices;
 mod labels;
 mod runtime;
 
 pub use engine_socket::{EngineSocket, local_socket, socket_group};
+pub use gpu_devices::GpuDevices;
 pub use runtime::DockerRuntime;

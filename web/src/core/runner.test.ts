@@ -33,6 +33,7 @@ function runner(overrides: Partial<Runner> = {}): Runner {
     cpus: null,
     memory: null,
     host_docker: false,
+    host_gpu: false,
     image: 'ghcr.io/actions/actions-runner:latest',
     status: 'running',
     exit_code: null,

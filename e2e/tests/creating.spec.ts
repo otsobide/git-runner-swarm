@@ -115,6 +115,28 @@ test('gives a runner’s jobs this host’s Docker only when asked', async ({ pa
   expect(() => docker('exec', isolated, 'test', '-e', '/var/run/docker.sock')).toThrow()
 })
 
+test('gives a runner’s jobs this host’s GPUs only when asked', async ({ page, request }) => {
+  const form = await openForm(page)
+  await form.getByLabel('Repository or owner URL').fill(`https://github.com/${owner.mine}/mindweaver`)
+  await form.getByLabel('Registration token').fill('E2E-TOKEN')
+  await form.getByLabel('Name', { exact: true }).fill('renderer')
+  await form.getByRole('checkbox', { name: /this host’s GPUs/ }).check()
+  await form.getByRole('button', { name: 'Create runner' }).click()
+  await createRunner(request, { url: `https://github.com/${owner.mine}/mindweaver`, name: 'cpu-only' })
+
+  await expect(row(page, owner.mine, 'renderer')).toContainText('Its jobs use this host’s GPUs')
+  await expect(row(page, owner.mine, 'cpu-only')).not.toContainText('GPUs')
+  const given = (await runnerNamed(request, 'renderer'))!
+  const without = (await runnerNamed(request, 'cpu-only'))!
+  // The panel, in a container of its own, learned the device's group on the host through its probe.
+  const group = String(statSync('/dev/null').gid)
+  expect(
+    docker('inspect', '--format', '{{json .HostConfig.Devices}} {{json .HostConfig.GroupAdd}}', containerOf(given)).trim(),
+  ).toBe(`[{"PathOnHost":"/dev/null","PathInContainer":"/dev/null","CgroupPermissions":"rwm"}] ["${group}"]`)
+  expect(docker('inspect', '--format', '{{json .HostConfig.Devices}}', containerOf(without)).trim()).toBe('null')
+  expect(docker('ps', '--all', '--format', '{{.Names}}')).not.toContain(`gpu-probe-${given.id}`)
+})
+
 test('points at the field holding a value the API refuses', async ({ page }) => {
   const form = await openForm(page)
   await form.getByLabel('Repository or owner URL').fill(`github.com/${owner.mine}/mindweaver`)

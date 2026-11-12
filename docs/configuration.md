@@ -12,6 +12,7 @@ with the repository's `compose.yaml`.
 | `GRS_GITHUB_IMAGE` | `ghcr.io/actions/actions-runner:latest` | The image GitHub runners run.                                    |
 | `GRS_STOP_TIMEOUT` | `30`                                    | Seconds a runner is given to stop cleanly before it is killed.   |
 | `GRS_RUNNER_DOCKER_SOCKET` | `/var/run/docker.sock`          | Where Docker's socket is on the host, for runners given Docker.  |
+| `GRS_RUNNER_GPUS`  | `/dev/dri`                              | The GPUs runners given the host's are given.                     |
 | `DOCKER_HOST`      | the local socket                        | Where Docker is, as for the Docker CLI.                          |
 | `RUST_LOG`         | `info`                                  | How much the panel logs.                                         |
 
@@ -141,6 +142,39 @@ or warns that it cannot tell (for an engine reached over the network).
 
 For rootless Docker, mount its socket into the panel as below, and set
 `GRS_RUNNER_DOCKER_SOCKET: /run/user/1000/docker.sock`.
+
+## `GRS_RUNNER_GPUS`
+
+The GPUs given to runners whose jobs are given the host's GPUs: device
+files **on the host**, each an absolute path, and `nvidia`, separated by
+commas. `/dev/dri` unless set.
+
+| The host's GPUs              | Set it to           | What the runners' jobs get                                                                    |
+| ---------------------------- | ------------------- | --------------------------------------------------------------------------------------------- |
+| AMD or Intel                 | `/dev/dri`          | Rendering, video and compute as Mesa drives them: OpenGL, Vulkan, VA-API, OpenCL.             |
+| AMD, with ROCm               | `/dev/dri,/dev/kfd` | ROCm's compute as well: HIP, and the frameworks built on it.                                  |
+| NVIDIA                       | `nvidia`            | Every NVIDIA GPU, as `docker run --gpus all` gives them, with every capability of the driver. |
+| NVIDIA and an integrated one | `/dev/dri,nvidia`   | Both.                                                                                         |
+
+A device path is mapped into the runner's container at the same path,
+and a directory, as `/dev/dri`, gives every device in it. Runners also
+join the groups owning the devices (`video` and `render`, on most
+hosts), so their user may open them. The panel cannot see the host's
+devices from its own container, so it asks Docker: before creating a
+runner given the GPUs, it runs a short-lived container of the runner's
+image, given the same devices, to list their groups, and removes it.
+
+`nvidia` takes the
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+on the host, set up for Docker (`nvidia-ctk runtime configure
+--runtime=docker`, then restart Docker). The toolkit mounts the driver's
+libraries and tools, as `nvidia-smi`, into the runner's container, and
+the panel asks it for every capability of the driver (graphics and
+video as well as compute) with `NVIDIA_DRIVER_CAPABILITIES=all`.
+
+A host without a device the list names makes creating a runner given the
+GPUs fail, saying which; runners not given them are not affected. The
+panel says the list at start.
 
 ## `DOCKER_HOST`
 

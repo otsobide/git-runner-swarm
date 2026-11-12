@@ -1,6 +1,6 @@
 use crate::{
-    EngineAccess, Forge, RunnerId, RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName,
-    RunnerScope,
+    EngineAccess, Forge, GpuAccess, RunnerId, RunnerLabels, RunnerLifecycle, RunnerLimits,
+    RunnerName, RunnerScope,
 };
 
 /// What a runner is asked to be when it is created: everything about it
@@ -15,6 +15,7 @@ pub struct RunnerDefinition {
     lifecycle: RunnerLifecycle,
     limits: RunnerLimits,
     engine_access: EngineAccess,
+    gpu_access: GpuAccess,
 }
 
 impl RunnerDefinition {
@@ -35,6 +36,7 @@ impl RunnerDefinition {
             lifecycle,
             limits: RunnerLimits::none(),
             engine_access: EngineAccess::Isolated,
+            gpu_access: GpuAccess::None,
         }
     }
 
@@ -49,6 +51,14 @@ impl RunnerDefinition {
     #[must_use]
     pub fn with_engine_access(mut self, access: EngineAccess) -> Self {
         self.engine_access = access;
+        self
+    }
+
+    /// The same runner, its jobs given `access` to the GPUs of the host it
+    /// runs on.
+    #[must_use]
+    pub fn with_gpu_access(mut self, access: GpuAccess) -> Self {
+        self.gpu_access = access;
         self
     }
 
@@ -84,6 +94,11 @@ impl RunnerDefinition {
     /// Whether its jobs may use the engine it runs on; never, unless asked.
     pub fn engine_access(&self) -> EngineAccess {
         self.engine_access
+    }
+
+    /// Whether its jobs may use its host's GPUs; never, unless asked.
+    pub fn gpu_access(&self) -> GpuAccess {
+        self.gpu_access
     }
 
     /// Whether `other` is another runner that would register under this
@@ -151,6 +166,17 @@ mod tests {
                 .with_engine_access(EngineAccess::Host)
                 .engine_access(),
             EngineAccess::Host
+        );
+    }
+
+    #[test]
+    fn gives_its_jobs_no_gpu_unless_told_to() {
+        let runner = definition("https://github.com/otsobide/mindweaver", "builder");
+
+        assert_eq!(runner.gpu_access(), GpuAccess::None);
+        assert_eq!(
+            runner.with_gpu_access(GpuAccess::Host).gpu_access(),
+            GpuAccess::Host
         );
     }
 

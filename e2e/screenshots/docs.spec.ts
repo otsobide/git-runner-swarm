@@ -45,7 +45,7 @@ test.describe('on a desktop', () => {
 
   test('creating a runner', async ({ page }) => {
     // Tall enough for the whole form, down to its buttons.
-    await page.setViewportSize({ width: 1280, height: 1280 })
+    await page.setViewportSize({ width: 1280, height: 1400 })
     await openPanel(page)
     await page.getByRole('button', { name: 'New runner' }).click()
     const dialog = page.getByRole('dialog', { name: 'New runner' })
@@ -53,7 +53,9 @@ test.describe('on a desktop', () => {
     await dialog.getByLabel('Registration token').fill('SAMPLE-REGISTRATION-TOKEN')
     await dialog.getByLabel('Name', { exact: true }).fill('gpu-2')
     await dialog.getByLabel('Labels').fill('gpu, cuda')
-    await dialog.getByLabel('Labels').blur()
+    const gpus = dialog.getByRole('checkbox', { name: /this host’s GPUs/ })
+    await gpus.check()
+    await gpus.blur()
     await page.screenshot({ path: join(folder, 'new-runner.png'), animations: 'disabled' })
   })
 

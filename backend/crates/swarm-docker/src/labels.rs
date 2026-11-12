@@ -8,8 +8,8 @@
 use std::collections::HashMap;
 
 use swarm_domain::{
-    CpuLimit, EngineAccess, InvalidValue, MemoryLimit, RunnerDefinition, RunnerId, RunnerLabels,
-    RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope,
+    CpuLimit, EngineAccess, GpuAccess, InvalidValue, MemoryLimit, RunnerDefinition, RunnerId,
+    RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope,
 };
 use thiserror::Error;
 
@@ -31,6 +31,9 @@ const MEMORY: &str = "git-runner-swarm.memory";
 /// Since 0.2: `host` when the runner's jobs are given the engine; isolated
 /// when missing.
 const ENGINE: &str = "git-runner-swarm.engine";
+/// Since 0.3: `host` when the runner's jobs are given the host's GPUs;
+/// none when missing.
+const GPU: &str = "git-runner-swarm.gpu";
 
 /// Why a container's labels could not be read back into a runner's
 /// definition.
@@ -70,6 +73,9 @@ pub(crate) fn encode(runner: &RunnerDefinition) -> HashMap<String, String> {
     if runner.engine_access().is_host() {
         labels.insert(ENGINE.to_owned(), runner.engine_access().to_string());
     }
+    if runner.gpu_access().is_host() {
+        labels.insert(GPU.to_owned(), runner.gpu_access().to_string());
+    }
     labels
 }
 
@@ -94,7 +100,8 @@ pub(crate) fn decode(
     ))
     .with_engine_access(
         read_optional(labels, ENGINE, str::parse::<EngineAccess>)?.unwrap_or_default(),
-    ))
+    )
+    .with_gpu_access(read_optional(labels, GPU, str::parse::<GpuAccess>)?.unwrap_or_default()))
 }
 
 fn read<'a, T>(
@@ -227,6 +234,24 @@ mod tests {
             decode(&labels).unwrap().engine_access(),
             EngineAccess::Isolated
         );
+    }
+
+    #[test]
+    fn reads_back_a_runner_given_the_hosts_gpus() {
+        let definition = definition().with_gpu_access(GpuAccess::Host);
+
+        let labels = encode(&definition);
+
+        assert_eq!(labels.get(GPU).map(String::as_str), Some("host"));
+        assert_eq!(decode(&labels).unwrap(), definition);
+    }
+
+    #[test]
+    fn reads_a_runner_without_a_gpu_label_as_given_none() {
+        let labels = encode(&definition());
+
+        assert!(!labels.contains_key(GPU));
+        assert_eq!(decode(&labels).unwrap().gpu_access(), GpuAccess::None);
     }
 
     #[test]

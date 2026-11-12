@@ -90,6 +90,7 @@ panel, which uses it to mark the input at fault.
 | `MemoryLimit`       | the most memory a runner may use                | a size as Docker writes one (`512m`, `4g`); at least 6 MiB                                |
 | `RunnerLimits`      | a runner's limits                               | a CPU limit and a memory limit, each optional                                             |
 | `EngineAccess`      | whether jobs may use the runner's engine        | `isolated` (the default) or `host`                                                        |
+| `GpuAccess`         | whether jobs may use the host's GPUs            | `none` (the default) or `host`                                                            |
 | `LogTail`           | how many of a runner's latest log lines to read | 1 to 5000 lines, 200 unless asked                                                         |
 | `LogLine`           | one line a runner logged                        | its text, and the output it went to: `stdout` or `stderr`                                 |
 | `RunnerStatus`      | what its container is doing                     | `created`, `running`, `restarting`, `paused`, `exited` or `dead`                          |
@@ -97,7 +98,7 @@ panel, which uses it to mark the input at fault.
 Built from these:
 
 - `RunnerDefinition`: what a runner was created as (id, forge, scope,
-  name, labels, lifecycle, limits, engine access), and the rule across runners: two runners
+  name, labels, lifecycle, limits, engine access, GPU access), and the rule across runners: two runners
   **conflict** when they would register under the same name in the same
   scope, since the forge would let the second replace the first.
 - `Runner`: a definition plus what the runtime says of it now: image,
@@ -193,6 +194,7 @@ The `RunnerRuntime` adapter for a Docker engine, through `bollard`.
 | `git-runner-swarm.cpus`      | its CPU limit, `1.5`; missing for none (since 0.2)              |
 | `git-runner-swarm.memory`    | its memory limit, `4g`; missing for none (since 0.2)            |
 | `git-runner-swarm.engine`    | `host` when its jobs are given Docker; missing if not (since 0.2) |
+| `git-runner-swarm.gpu`       | `host` when its jobs are given the GPUs; missing if not (since 0.3) |
 
 Labels are fixed when a container is created, so a runner's definition
 never changes after creation: to change one, delete the runner and
@@ -208,6 +210,19 @@ owning it (`GroupAdd`). The runtime is told both as an `EngineSocket`:
 the socket's path on the host (`GRS_RUNNER_DOCKER_SOCKET`), which the
 engine resolves, and the group, which `swarm-server` reads from the
 socket the panel itself reaches Docker at.
+
+A runner given the GPUs has the devices of `GpuDevices`
+(`GRS_RUNNER_GPUS`) mapped into its container at the paths they have on
+the host (`Devices`), NVIDIA's asked for as `--gpus all` asks
+(`DeviceRequests`), and joins the groups owning the devices
+(`GroupAdd`). Those groups are the host's, which the panel, in its own
+container, cannot see; Docker gives a container the host's device files
+with their owners. So before creating the runner, the runtime creates a
+**probe**, `git-runner-swarm-gpu-probe-<id>`: a container of the
+runner's own image, given the same devices, offline, whose `find … -exec
+stat -c %g` lists the devices' groups. It is removed whatever it found;
+its failing (a device the host lacks) fails the launch, before the
+runner's container is made.
 
 ### `swarm-github`: GitHub's official runner image
 
@@ -279,7 +294,8 @@ finishes the requests under way and exits; runners are left running.
    another has the same name in the same scope, ignoring case.
 5. The image adapter turns the definition and the token into a
    `LaunchSpec`.
-6. The runtime pulls the image if Docker lacks it, creates the container
+6. The runtime pulls the image if Docker lacks it, finds the groups of
+   the GPUs' devices if the runner is given them, creates the container
    with the spec and the definition's labels, and starts it.
 7. The container's script registers the runner with GitHub and runs it.
    The API answers `201` with the runner as Docker now reports it.

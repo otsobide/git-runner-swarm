@@ -26,6 +26,8 @@ export interface Runner {
   memory: string | null
   /** Whether its jobs are given the host's Docker. */
   host_docker: boolean
+  /** Whether its jobs are given the host's GPUs. */
+  host_gpu: boolean
   image: string
   status: RunnerStatus
   exit_code: number | null
@@ -64,6 +66,8 @@ export interface NewRunner {
   memory?: string
   /** Whether its jobs are given the host's Docker; not when left out. */
   host_docker?: boolean
+  /** Whether its jobs are given the host's GPUs; not when left out. */
+  host_gpu?: boolean
   /** The key of the image; the forge's default when left out. */
   image?: string
 }

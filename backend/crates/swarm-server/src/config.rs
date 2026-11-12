@@ -4,6 +4,7 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use swarm_docker::GpuDevices;
 use swarm_domain::{ImageReference, InvalidValue};
 use thiserror::Error;
 
@@ -20,6 +21,10 @@ pub const DEFAULT_STOP_TIMEOUT: i32 = 30;
 /// The engine's socket on the host, which runners given Docker mount,
 /// unless `GRS_RUNNER_DOCKER_SOCKET` says otherwise.
 pub const DEFAULT_RUNNER_DOCKER_SOCKET: &str = "/var/run/docker.sock";
+
+/// The GPUs runners given the host's are given, unless `GRS_RUNNER_GPUS`
+/// says otherwise.
+pub const DEFAULT_RUNNER_GPUS: &str = GpuDevices::DEFAULT;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
@@ -40,6 +45,9 @@ pub struct Config {
     /// `GRS_RUNNER_DOCKER_SOCKET`: where the engine's socket is on the
     /// host, for runners whose jobs are given Docker to mount it.
     pub runner_docker_socket: String,
+    /// `GRS_RUNNER_GPUS`: the GPUs runners given the host's are given,
+    /// device files of the host and `nvidia`, comma-separated.
+    pub runner_gpus: GpuDevices,
 }
 
 /// Where runners run.
@@ -127,6 +135,14 @@ impl Config {
             });
         }
 
+        let runner_gpus =
+            variable("GRS_RUNNER_GPUS").unwrap_or_else(|| DEFAULT_RUNNER_GPUS.to_owned());
+        let runner_gpus = GpuDevices::parse(&runner_gpus).ok_or(ConfigError::Invalid {
+            variable: "GRS_RUNNER_GPUS",
+            value: runner_gpus.clone(),
+            expected: "device paths on the host or nvidia, comma-separated, such as /dev/dri",
+        })?;
+
         Ok(Self {
             listen,
             web_dir: variable("GRS_WEB_DIR").map(PathBuf::from),
@@ -134,6 +150,7 @@ impl Config {
             github_image,
             stop_timeout,
             runner_docker_socket,
+            runner_gpus,
         })
     }
 }
@@ -165,6 +182,7 @@ mod tests {
         );
         assert_eq!(config.stop_timeout, 30);
         assert_eq!(config.runner_docker_socket, "/var/run/docker.sock");
+        assert_eq!(config.runner_gpus.to_string(), "/dev/dri");
     }
 
     #[test]
@@ -176,6 +194,7 @@ mod tests {
             ("GRS_GITHUB_IMAGE", "ghcr.io/actions/actions-runner:2.338.2"),
             ("GRS_STOP_TIMEOUT", "60"),
             ("GRS_RUNNER_DOCKER_SOCKET", "/run/user/1000/docker.sock"),
+            ("GRS_RUNNER_GPUS", "/dev/dri, /dev/kfd"),
         ])
         .unwrap();
 
@@ -188,6 +207,7 @@ mod tests {
         );
         assert_eq!(config.stop_timeout, 60);
         assert_eq!(config.runner_docker_socket, "/run/user/1000/docker.sock");
+        assert_eq!(config.runner_gpus.to_string(), "/dev/dri,/dev/kfd");
     }
 
     #[test]
@@ -207,6 +227,8 @@ mod tests {
             ("GRS_STOP_TIMEOUT", "soon"),
             ("GRS_GITHUB_IMAGE", "two words"),
             ("GRS_RUNNER_DOCKER_SOCKET", "docker.sock"),
+            ("GRS_RUNNER_GPUS", "amd"),
+            ("GRS_RUNNER_GPUS", ","),
         ] {
             let error = config(&[(variable, value)]).unwrap_err();
             assert!(error.to_string().starts_with(variable), "{error}");

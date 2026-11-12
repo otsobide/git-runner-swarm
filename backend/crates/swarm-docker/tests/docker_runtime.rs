@@ -5,6 +5,7 @@
 //! The tests that need an engine are ignored unless asked for:
 //! `cargo test -p swarm-docker -- --include-ignored`.
 
+use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::UnixListener;
 use std::process::Command;
 
@@ -14,11 +15,11 @@ use bollard::query_parameters::InspectContainerOptions;
 use swarm_application::ports::{
     EnvironmentVariable, LaunchSpec, RestartPolicy, RunnerRuntime, RuntimeError,
 };
-use swarm_docker::{DockerRuntime, EngineSocket};
+use swarm_docker::{DockerRuntime, EngineSocket, GpuDevices};
 use swarm_domain::{
-    CpuLimit, EngineAccess, Forge, ImageReference, LogLine, LogStream, LogTail, MemoryLimit,
-    RunnerDefinition, RunnerId, RunnerLabels, RunnerLifecycle, RunnerLimits, RunnerName,
-    RunnerScope, RunnerStatus,
+    CpuLimit, EngineAccess, Forge, GpuAccess, ImageReference, LogLine, LogStream, LogTail,
+    MemoryLimit, RunnerDefinition, RunnerId, RunnerLabels, RunnerLifecycle, RunnerLimits,
+    RunnerName, RunnerScope, RunnerStatus,
 };
 
 const IMAGE: &str = "busybox:1.37";
@@ -209,6 +210,89 @@ async fn gives_the_engine_to_a_runner_that_asks_for_it() {
     assert_eq!(host.group_add, Some(vec!["4242".to_owned()]));
     let found = runtime.find(definition.id()).await.unwrap().unwrap();
     assert_eq!(found.definition().engine_access(), EngineAccess::Host);
+}
+
+/// The names of the containers there are, running or not.
+fn containers() -> Vec<String> {
+    let listed = Command::new("docker")
+        .args(["ps", "--all", "--format", "{{.Names}}"])
+        .output()
+        .unwrap();
+    String::from_utf8(listed.stdout)
+        .unwrap()
+        .lines()
+        .map(str::to_owned)
+        .collect()
+}
+
+#[tokio::test]
+#[ignore = "needs a Docker engine; run with --include-ignored"]
+async fn gives_the_gpus_and_their_groups_to_a_runner_that_asks_for_them() {
+    // `/dev/null` stands for a GPU: every host has it, and it is a device
+    // file a container can be given like any other.
+    let runtime = runtime().with_gpus(GpuDevices::parse("/dev/null").unwrap());
+    let definition = definition("given-the-gpus").with_gpu_access(GpuAccess::Host);
+    let _removed = Removed(definition.id());
+    runtime
+        .ensure_image(&ImageReference::new(IMAGE).unwrap())
+        .await
+        .unwrap();
+    runtime.launch(&definition, &sleeping()).await.unwrap();
+
+    let host = Docker::connect_with_defaults()
+        .unwrap()
+        .inspect_container(
+            &format!("git-runner-swarm-{}", definition.id()),
+            None::<InspectContainerOptions>,
+        )
+        .await
+        .unwrap()
+        .host_config
+        .unwrap();
+
+    let devices = host.devices.unwrap();
+    assert_eq!(devices.len(), 1);
+    assert_eq!(devices[0].path_on_host.as_deref(), Some("/dev/null"));
+    let group = std::fs::metadata("/dev/null").unwrap().gid();
+    assert_eq!(host.group_add, Some(vec![group.to_string()]));
+    let found = runtime.find(definition.id()).await.unwrap().unwrap();
+    assert_eq!(found.definition().gpu_access(), GpuAccess::Host);
+    assert!(
+        !containers()
+            .iter()
+            .any(|name| name.contains(&format!("gpu-probe-{}", definition.id()))),
+        "the probe is left behind"
+    );
+}
+
+#[tokio::test]
+#[ignore = "needs a Docker engine; run with --include-ignored"]
+async fn refuses_to_launch_a_runner_given_gpus_the_host_does_not_have() {
+    let runtime = runtime().with_gpus(GpuDevices::parse("/dev/no-such-gpu").unwrap());
+    let definition = definition("given-no-gpu").with_gpu_access(GpuAccess::Host);
+    let _removed = Removed(definition.id());
+    runtime
+        .ensure_image(&ImageReference::new(IMAGE).unwrap())
+        .await
+        .unwrap();
+
+    let error = runtime.launch(&definition, &sleeping()).await.unwrap_err();
+
+    let RuntimeError::Failed(message) = error else {
+        panic!("not a failure to launch: {error:?}");
+    };
+    assert!(
+        message.starts_with("could not give the runner the host's GPUs (/dev/no-such-gpu): "),
+        "{message}"
+    );
+    assert!(message.contains("no such file or directory"), "{message}");
+    assert_eq!(runtime.find(definition.id()).await.unwrap(), None);
+    assert!(
+        !containers()
+            .iter()
+            .any(|name| name.contains(&definition.id().to_string())),
+        "a container is left behind"
+    );
 }
 
 #[tokio::test]

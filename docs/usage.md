@@ -146,6 +146,13 @@ only tick it for repositories whose every workflow you trust (see
 this host's Docker*. How it works, and what does not, is under
 [Docker in jobs](#docker-in-jobs).
 
+**GPU.** Ticking **Give its jobs this host's GPUs** gives the runner's
+jobs the host's graphics cards, to render (OpenGL, Vulkan), encode and
+decode video, and compute (OpenCL, ROCm, CUDA) on them. The runner's
+row then says *Its jobs use this host's GPUs*. Creating the runner fails
+if the host has no GPU to give. How it works, and which GPUs are given,
+is under [GPUs in jobs](#gpus-in-jobs).
+
 **Image.** The panel runs GitHub's official runner image,
 `ghcr.io/actions/actions-runner:latest` unless configured otherwise
 (`GRS_GITHUB_IMAGE`). When more images are configured, the form offers
@@ -228,6 +235,41 @@ inside it. So:
 The socket mounted is `/var/run/docker.sock` on the host, unless
 `GRS_RUNNER_DOCKER_SOCKET` says otherwise (for rootless Docker, for
 example).
+
+### GPUs in jobs
+
+A runner given the host's GPUs has the GPUs' device files in its
+container, at the paths they have on the host, and its user joins the
+groups owning them, so its jobs can use the GPUs as the host's own users
+can. Which GPUs are given is the panel's setting,
+[`GRS_RUNNER_GPUS`](configuration.md#grs_runner_gpus): `/dev/dri`
+unless set, which is how AMD's and Intel's GPUs are used; `/dev/kfd`
+besides it for ROCm; `nvidia` for NVIDIA's.
+
+GitHub's image has the device, but none of the libraries that drive it:
+jobs install them, as they install anything else. For an AMD or Intel
+GPU, Mesa's:
+
+```yaml
+jobs:
+  render:
+    runs-on: [self-hosted, gpu]
+    steps:
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers vulkan-tools
+      - run: vulkaninfo --summary   # names the host's GPU
+```
+
+For an NVIDIA GPU, the NVIDIA Container Toolkit mounts the driver's
+libraries and `nvidia-smi` into the container; CUDA's own libraries are
+the job's to install, or come with the framework (PyTorch's wheels, for
+one).
+
+Labelling such runners `gpu` lets workflows ask for them, as above. The
+GPUs are shared: every runner given them, and the host itself, use the
+same GPUs at once, and nothing limits how much of a GPU's memory one job
+takes.
 
 ## Reading the panel
 
@@ -379,6 +421,15 @@ delete the other runner first.
 pull the image: check the host can reach the registry (`docker pull
 ghcr.io/actions/actions-runner:latest`), and the image name if
 `GRS_GITHUB_IMAGE` is set.
+
+**Creating a runner fails with *could not give the runner the host's
+GPUs*.** The host lacks a device
+[`GRS_RUNNER_GPUS`](configuration.md#grs_runner_gpus) names: no
+`/dev/dri` on a host without a GPU, or whose GPU's driver is not
+loaded; no `/dev/kfd` without ROCm's. `ls -l /dev/dri /dev/kfd` on the
+host shows what it has. With `nvidia`, *could not select device driver*
+means the NVIDIA Container Toolkit is not installed, or not set up for
+Docker.
 
 **The panel shows *The panel's server cannot be reached*.** The panel's
 container stopped. `docker compose ps` and `docker compose logs panel`

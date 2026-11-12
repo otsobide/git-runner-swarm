@@ -18,6 +18,13 @@ async function fill(wrapper: ReturnType<typeof panel>) {
   await labels!.setValue('gpu, large  docker')
 }
 
+/** The checkbox a choice's title names, as a person finds it. */
+function choice(wrapper: ReturnType<typeof panel>, title: string) {
+  const label = wrapper.findAll('label.choice').find((label) => label.find('strong').text() === title)
+  if (label === undefined) throw new Error(`no ${title} choice`)
+  return label.find('input[type="checkbox"]')
+}
+
 /** The input a label names, as a person finds it. */
 function labelled(wrapper: ReturnType<typeof panel>, text: string) {
   const label = wrapper.findAll('label').find((label) => label.text() === text)
@@ -97,12 +104,33 @@ describe('CreateRunnerPanel', () => {
     await fill(wrapper)
     await wrapper.find('form').trigger('submit')
     await flushPromises()
-    await wrapper.find('input[type="checkbox"]').setValue(true)
+    await choice(wrapper, 'Give its jobs this host’s Docker').setValue(true)
     await wrapper.find('form').trigger('submit')
     await flushPromises()
 
     expect(asked[0]).not.toHaveProperty('host_docker')
     expect(asked[1]).toMatchObject({ host_docker: true })
+    expect(asked[1]).not.toHaveProperty('host_gpu')
+    wrapper.unmount()
+  })
+
+  it('gives the runner’s jobs this host’s GPUs only when asked', async () => {
+    const asked: NewRunner[] = []
+    const wrapper = panel(async (runner) => {
+      asked.push(runner)
+      return aRunner()
+    })
+
+    await fill(wrapper)
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    await choice(wrapper, 'Give its jobs this host’s GPUs').setValue(true)
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(asked[0]).not.toHaveProperty('host_gpu')
+    expect(asked[1]).toMatchObject({ host_gpu: true })
+    expect(asked[1]).not.toHaveProperty('host_docker')
     wrapper.unmount()
   })
 

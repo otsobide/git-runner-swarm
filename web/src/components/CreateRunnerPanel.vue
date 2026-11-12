@@ -34,6 +34,7 @@ const form = reactive({
   cpus: '',
   memory: '',
   hostDocker: false,
+  hostGpu: false,
   image: props.images[0]?.key ?? '',
 })
 const fieldErrors = reactive<Partial<Record<Field, string>>>({})
@@ -63,6 +64,7 @@ async function submit() {
     if (form.cpus.trim() !== '') asked.cpus = form.cpus.trim()
     if (form.memory.trim() !== '') asked.memory = form.memory.trim()
     if (form.hostDocker) asked.host_docker = true
+    if (form.hostGpu) asked.host_gpu = true
     const runner = await props.create(asked)
     emit('created', runner)
   } catch (error) {
@@ -238,6 +240,20 @@ function sentence(message: string): string {
               <span :id="`${id}-docker-hint`" class="hint">
                 So they can build images and run containers. They then control this host as root does: only for
                 repositories whose every workflow you trust.
+              </span>
+            </span>
+          </label>
+        </fieldset>
+
+        <fieldset class="field">
+          <legend>GPU</legend>
+          <label class="choice">
+            <input v-model="form.hostGpu" type="checkbox" :aria-describedby="`${id}-gpu-hint`" />
+            <span>
+              <strong>Give its jobs this host’s GPUs</strong>
+              <span :id="`${id}-gpu-hint`" class="hint">
+                So they can render, encode video and compute on them. Creating the runner fails if this host has no
+                GPU to give.
               </span>
             </span>
           </label>

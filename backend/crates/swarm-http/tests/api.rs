@@ -190,6 +190,25 @@ async fn gives_a_runner_the_hosts_docker_only_when_asked() {
 }
 
 #[tokio::test]
+async fn gives_a_runner_the_hosts_gpus_only_when_asked() {
+    let panel = panel();
+    let mut asking = runner("https://github.com/otsobide/mindweaver", "gpu");
+    asking["host_gpu"] = json!(true);
+
+    let given = panel.post("/api/runners", Some(asking)).await;
+    let id = given.body["id"].as_str().unwrap().to_owned();
+    let shown = panel.get(&format!("/api/runners/{id}")).await;
+    let without = panel
+        .created("https://github.com/otsobide/mindweaver", "cpu")
+        .await;
+
+    assert_eq!(given.status, StatusCode::CREATED);
+    assert_eq!(given.body["host_gpu"], true);
+    assert_eq!(shown.body["host_gpu"], true);
+    assert_eq!(without["host_gpu"], false);
+}
+
+#[tokio::test]
 async fn refuses_a_limit_naming_it() {
     for (field, value, refused) in [
         ("cpus", json!("0"), "CPU limit"),

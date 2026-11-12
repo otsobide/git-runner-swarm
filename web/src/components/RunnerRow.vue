@@ -35,6 +35,7 @@ function remove() {
       </p>
       <p v-if="limits !== null" class="limits soft">{{ limits }}</p>
       <p v-if="runner.host_docker" class="engine soft">Its jobs use this host’s Docker</p>
+      <p v-if="runner.host_gpu" class="gpu soft">Its jobs use this host’s GPUs</p>
     </div>
 
     <ul class="labels" aria-label="Labels">

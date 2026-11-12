@@ -70,7 +70,7 @@ on GitHub on its own: not create tokens, not remove registrations.
 Jobs run inside their runner's container, as the `runner` user, who can
 use `sudo` without a password: a job is root **in its container**.
 Unless asked, the panel gives runners nothing of the host's: no Docker
-socket, no mounts, no extra privileges, and Docker's default network,
+socket, no devices, no mounts, no extra privileges, and Docker's default network,
 from which they can reach the internet and whatever the host can reach.
 
 A runner created with **Give its jobs this host's Docker** is the one
@@ -81,6 +81,17 @@ every workflow, and everyone who can change one, is trusted; never to a
 runner of a public repository. The panel shows such runners as using
 the host's Docker in their row, and `docker ps --filter
 label=git-runner-swarm.engine=host` lists them.
+
+A runner created with **Give its jobs this host's GPUs** gets the GPUs'
+device files, and joins the groups owning them (`video` and `render`,
+on most hosts). That is far less than Docker, but not nothing: its jobs
+reach the GPU's kernel driver directly, whose flaws are the host's; they
+share the GPUs, and their memory, with the host and every other runner
+given them, so one job can starve the rest; and with `video`, they can
+open the host's display devices too. Give the GPUs to runners that need
+them, and label those runners (`gpu`) so only the workflows that need
+them pick them. `docker ps --filter label=git-runner-swarm.gpu=host`
+lists them.
 
 A persistent runner keeps its container from job to job: what one job
 leaves (files, installed tools, a process left running) is there for the

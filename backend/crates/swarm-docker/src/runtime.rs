@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::time::SystemTime;
 
 use async_trait::async_trait;
@@ -12,6 +12,7 @@ use bollard::models::{
 use bollard::query_parameters::{
     CreateContainerOptions, CreateImageOptions, InspectContainerOptions, ListContainersOptions,
     LogsOptionsBuilder, RemoveContainerOptions, StartContainerOptions, StopContainerOptions,
+    WaitContainerOptions,
 };
 use futures_util::StreamExt;
 use futures_util::future::join_all;
@@ -21,10 +22,15 @@ use swarm_domain::{
 };
 
 use crate::engine_socket::EngineSocket;
+use crate::gpu_devices::GpuDevices;
 use crate::labels;
 
 /// What every runner's container is named, before its runner's id.
 const CONTAINER_PREFIX: &str = "git-runner-swarm-";
+
+/// What the container that finds the groups of a runner's GPUs is named,
+/// before the runner's id.
+const GPU_PROBE_PREFIX: &str = "git-runner-swarm-gpu-probe-";
 
 /// Runs runners as containers of a Docker engine.
 #[derive(Debug, Clone)]
@@ -32,6 +38,7 @@ pub struct DockerRuntime {
     docker: Docker,
     stop_timeout: i32,
     engine_socket: EngineSocket,
+    gpus: GpuDevices,
 }
 
 impl DockerRuntime {
@@ -59,6 +66,7 @@ impl DockerRuntime {
             docker,
             stop_timeout: Self::DEFAULT_STOP_TIMEOUT,
             engine_socket: EngineSocket::default(),
+            gpus: GpuDevices::default(),
         }
     }
 
@@ -74,6 +82,15 @@ impl DockerRuntime {
     #[must_use]
     pub fn with_engine_socket(mut self, socket: EngineSocket) -> Self {
         self.engine_socket = socket;
+        self
+    }
+
+    /// The runtime, giving the jobs of runners that ask for the host's
+    /// GPUs `gpus`: the Direct Rendering Infrastructure's devices, unless
+    /// told.
+    #[must_use]
+    pub fn with_gpus(mut self, gpus: GpuDevices) -> Self {
+        self.gpus = gpus;
         self
     }
 
@@ -106,6 +123,118 @@ impl DockerRuntime {
             Err(error) if status_of(&error) == Some(404) => Ok(None),
             Err(error) => Err(engine_error(error)),
         }
+    }
+
+    /// The groups owning the device files of the GPUs runners are given,
+    /// which a runner's user joins to use them.
+    ///
+    /// Docker gives a container the host's device files with the owners
+    /// and modes they have on the host, and the groups owning them are
+    /// the host's to know: the panel, often in a container of its own,
+    /// does not see them. So a container of the runner's own `image`,
+    /// given the same devices, lists their groups as the runner's will
+    /// see them, and is removed. Its failing to be given the devices,
+    /// as on a host without them, is the runner's failing to launch.
+    async fn gpu_groups(
+        &self,
+        id: RunnerId,
+        image: &ImageReference,
+    ) -> Result<BTreeSet<u32>, RuntimeError> {
+        if self.gpus.paths().is_empty() {
+            return Ok(BTreeSet::new());
+        }
+        let name = format!("{GPU_PROBE_PREFIX}{id}");
+        let options = CreateContainerOptions {
+            name: Some(name.clone()),
+            ..CreateContainerOptions::default()
+        };
+        self.docker
+            .create_container(Some(options), gpu_probe_body(image, &self.gpus))
+            .await
+            .map_err(|error| self.gpu_error(&engine_error(error).to_string()))?;
+
+        let groups = self.run_gpu_probe(&name).await;
+
+        let remove = RemoveContainerOptions {
+            force: true,
+            ..RemoveContainerOptions::default()
+        };
+        if let Err(cleanup) = self.docker.remove_container(&name, Some(remove)).await {
+            tracing::warn!(container = name, "could not remove a GPU probe: {cleanup}");
+        }
+        groups
+    }
+
+    /// Runs the probe `name` to its end, and reads the groups it listed.
+    async fn run_gpu_probe(&self, name: &str) -> Result<BTreeSet<u32>, RuntimeError> {
+        self.docker
+            .start_container(name, None::<StartContainerOptions>)
+            .await
+            .map_err(|error| self.gpu_error(&engine_error(error).to_string()))?;
+        let exited = self
+            .docker
+            .wait_container(name, None::<WaitContainerOptions>)
+            .next()
+            .await;
+        let output = self.logged(name, "all").await.map_err(engine_error)?;
+        match exited {
+            Some(Ok(_)) => {}
+            Some(Err(DockerError::DockerContainerWaitError { code, .. })) => {
+                let said: Vec<&str> = output
+                    .iter()
+                    .filter(|line| line.stream() == LogStream::Err)
+                    .map(LogLine::text)
+                    .collect();
+                return Err(self.gpu_error(&format!(
+                    "listing their groups exited with {code}: {}",
+                    said.join("; ")
+                )));
+            }
+            Some(Err(error)) => return Err(engine_error(error)),
+            None => {
+                return Err(self.gpu_error("the engine did not say how listing their groups ended"));
+            }
+        }
+        output
+            .iter()
+            .filter(|line| line.stream() == LogStream::Out)
+            .map(|line| {
+                line.text().trim().parse::<u32>().map_err(|_| {
+                    self.gpu_error(&format!("listing their groups gave `{}`", line.text()))
+                })
+            })
+            .collect()
+    }
+
+    /// A failure giving a runner the GPUs, saying which.
+    fn gpu_error(&self, reason: &str) -> RuntimeError {
+        RuntimeError::Failed(format!(
+            "could not give the runner the host's GPUs ({}): {reason}",
+            self.gpus
+        ))
+    }
+
+    /// The latest lines a container logged, `tail` of them or `all`, from
+    /// both its outputs, in the order they were written.
+    async fn logged(&self, container: &str, tail: &str) -> Result<Vec<LogLine>, DockerError> {
+        let options = LogsOptionsBuilder::new()
+            .stdout(true)
+            .stderr(true)
+            .tail(tail)
+            .build();
+        let mut frames = self.docker.logs(container, Some(options));
+        let mut lines = Vec::new();
+        while let Some(frame) = frames.next().await {
+            let (stream, message) = match frame? {
+                LogOutput::StdOut { message } | LogOutput::Console { message } => {
+                    (LogStream::Out, message)
+                }
+                LogOutput::StdErr { message } => (LogStream::Err, message),
+                LogOutput::StdIn { .. } => continue,
+            };
+            lines.extend(lines_of(stream, &message));
+        }
+        Ok(lines)
     }
 }
 
@@ -141,6 +270,11 @@ impl RunnerRuntime for DockerRuntime {
         spec: &LaunchSpec,
     ) -> Result<Runner, RuntimeError> {
         let id = runner.id();
+        let gpu_groups = if runner.gpu_access().is_host() {
+            self.gpu_groups(id, &spec.image).await?
+        } else {
+            BTreeSet::new()
+        };
         let name = container_name(id);
         let options = CreateContainerOptions {
             name: Some(name.clone()),
@@ -149,7 +283,7 @@ impl RunnerRuntime for DockerRuntime {
         self.docker
             .create_container(
                 Some(options),
-                container_body(runner, spec, &self.engine_socket),
+                container_body(runner, spec, &self.engine_socket, &self.gpus, &gpu_groups),
             )
             .await
             .map_err(engine_error)?;
@@ -243,23 +377,10 @@ impl RunnerRuntime for DockerRuntime {
     /// The container's latest lines, from both its outputs, in the order
     /// they were written.
     async fn logs(&self, id: RunnerId, tail: LogTail) -> Result<Vec<LogLine>, RuntimeError> {
-        let options = LogsOptionsBuilder::new()
-            .stdout(true)
-            .stderr(true)
-            .tail(&tail.lines().to_string())
-            .build();
-        let mut frames = self.docker.logs(&container_name(id), Some(options));
-        let mut lines = Vec::new();
-        while let Some(frame) = frames.next().await {
-            let (stream, message) = match frame.map_err(|error| runner_error(id, error))? {
-                LogOutput::StdOut { message } | LogOutput::Console { message } => {
-                    (LogStream::Out, message)
-                }
-                LogOutput::StdErr { message } => (LogStream::Err, message),
-                LogOutput::StdIn { .. } => continue,
-            };
-            lines.extend(lines_of(stream, &message));
-        }
+        let mut lines = self
+            .logged(&container_name(id), &tail.lines().to_string())
+            .await
+            .map_err(|error| runner_error(id, error))?;
         let beyond = lines.len().saturating_sub(tail.lines() as usize);
         lines.drain(..beyond);
         Ok(lines)
@@ -286,26 +407,41 @@ pub(crate) fn container_name(id: RunnerId) -> String {
 }
 
 /// The container a runner runs in, as its launch spec says, with its
-/// definition in its labels, limited as the definition asks, and given the
+/// definition in its labels, limited as the definition asks, given the
 /// engine's `socket` (and its group) only if the definition asks for the
-/// engine. Docker's own init runs as PID 1, to reap what jobs leave behind
-/// and pass signals on to the runner.
+/// engine, and the `gpus` (and their groups, `gpu_groups`) only if it asks
+/// for the host's GPUs. Docker's own init runs as PID 1, to reap what jobs
+/// leave behind and pass signals on to the runner.
 fn container_body(
     runner: &RunnerDefinition,
     spec: &LaunchSpec,
     socket: &EngineSocket,
+    gpus: &GpuDevices,
+    gpu_groups: &BTreeSet<u32>,
 ) -> ContainerCreateBody {
     let limits = runner.limits();
     let engine = runner.engine_access().is_host();
+    let gpu = runner.gpu_access().is_host();
+    let groups: BTreeSet<u32> = socket
+        .group()
+        .filter(|_| engine)
+        .into_iter()
+        .chain(gpu_groups.iter().copied().filter(|_| gpu))
+        .collect();
+    let mut env: Vec<String> = spec
+        .environment
+        .iter()
+        .map(|variable| format!("{}={}", variable.name(), variable.value()))
+        .collect();
+    if gpu && gpus.nvidia() {
+        // Every capability of NVIDIA's driver, graphics and video as well
+        // as compute, where the toolkit gives only compute by default.
+        env.push("NVIDIA_DRIVER_CAPABILITIES=all".to_owned());
+    }
     ContainerCreateBody {
         image: Some(spec.image.to_string()),
         cmd: (!spec.command.is_empty()).then(|| spec.command.clone()),
-        env: Some(
-            spec.environment
-                .iter()
-                .map(|variable| format!("{}={}", variable.name(), variable.value()))
-                .collect(),
-        ),
+        env: Some(env),
         labels: Some(labels::encode(runner)),
         host_config: Some(HostConfig {
             init: Some(true),
@@ -323,10 +459,35 @@ fn container_body(
                 .memory()
                 .map(|memory| i64::try_from(memory.bytes()).unwrap_or(i64::MAX)),
             binds: engine.then(|| vec![socket.bind()]),
-            group_add: socket
-                .group()
-                .filter(|_| engine)
-                .map(|group| vec![group.to_string()]),
+            devices: Some(gpus.mappings()).filter(|devices| gpu && !devices.is_empty()),
+            device_requests: Some(gpus.requests()).filter(|requests| gpu && !requests.is_empty()),
+            group_add: (!groups.is_empty())
+                .then(|| groups.iter().map(ToString::to_string).collect()),
+            ..HostConfig::default()
+        }),
+        ..ContainerCreateBody::default()
+    }
+}
+
+/// The container that lists the groups owning the GPUs' device files: a
+/// container of `image` given the devices, finding each device file in
+/// them and printing its group's id, one a line. `find` and `stat` are
+/// all it takes of the image, GNU's or `BusyBox`'s alike.
+fn gpu_probe_body(image: &ImageReference, gpus: &GpuDevices) -> ContainerCreateBody {
+    let mut find = gpus.paths().to_vec();
+    find.extend(
+        ["-type", "c", "-exec", "stat", "-c", "%g", "{}", "+"]
+            .into_iter()
+            .map(str::to_owned),
+    );
+    ContainerCreateBody {
+        image: Some(image.to_string()),
+        entrypoint: Some(vec!["find".to_owned()]),
+        cmd: Some(find),
+        network_disabled: Some(true),
+        host_config: Some(HostConfig {
+            devices: Some(gpus.mappings()),
+            network_mode: Some("none".to_owned()),
             ..HostConfig::default()
         }),
         ..ContainerCreateBody::default()
@@ -446,8 +607,8 @@ mod tests {
     use bollard::models::{ContainerConfig, ContainerState};
     use swarm_application::ports::EnvironmentVariable;
     use swarm_domain::{
-        CpuLimit, EngineAccess, Forge, MemoryLimit, RunnerLabels, RunnerLifecycle, RunnerLimits,
-        RunnerName, RunnerScope,
+        CpuLimit, EngineAccess, Forge, GpuAccess, MemoryLimit, RunnerLabels, RunnerLifecycle,
+        RunnerLimits, RunnerName, RunnerScope,
     };
 
     use super::*;
@@ -477,6 +638,22 @@ mod tests {
             ],
             restart,
         }
+    }
+
+    /// The container of a runner given the engine's `socket`, and the
+    /// GPUs the panel gives unless told otherwise, of no group.
+    fn body(
+        runner: &RunnerDefinition,
+        spec: &LaunchSpec,
+        socket: &EngineSocket,
+    ) -> ContainerCreateBody {
+        container_body(
+            runner,
+            spec,
+            socket,
+            &GpuDevices::default(),
+            &BTreeSet::new(),
+        )
     }
 
     fn pulled(reference: &str) -> (Option<String>, Option<String>) {
@@ -510,7 +687,7 @@ mod tests {
     fn creates_the_container_as_the_spec_says() {
         let definition = definition();
 
-        let body = container_body(
+        let body = body(
             &definition,
             &spec(RestartPolicy::UnlessStopped),
             &EngineSocket::default(),
@@ -535,7 +712,7 @@ mod tests {
             Some(MemoryLimit::parse("512m").unwrap()),
         ));
 
-        let host = container_body(
+        let host = body(
             &definition,
             &spec(RestartPolicy::Never),
             &EngineSocket::default(),
@@ -549,7 +726,7 @@ mod tests {
 
     #[test]
     fn leaves_the_container_unlimited_unless_asked() {
-        let host = container_body(
+        let host = body(
             &definition(),
             &spec(RestartPolicy::Never),
             &EngineSocket::default(),
@@ -566,7 +743,7 @@ mod tests {
         let definition = definition().with_engine_access(EngineAccess::Host);
         let socket = EngineSocket::new("/var/run/docker.sock", Some(967));
 
-        let host = container_body(&definition, &spec(RestartPolicy::Never), &socket)
+        let host = body(&definition, &spec(RestartPolicy::Never), &socket)
             .host_config
             .unwrap();
 
@@ -581,7 +758,7 @@ mod tests {
     fn mounts_the_engine_without_a_group_when_its_group_is_unknown() {
         let definition = definition().with_engine_access(EngineAccess::Host);
 
-        let host = container_body(
+        let host = body(
             &definition,
             &spec(RestartPolicy::Never),
             &EngineSocket::default(),
@@ -597,12 +774,128 @@ mod tests {
     fn gives_an_isolated_runner_no_engine() {
         let socket = EngineSocket::new("/var/run/docker.sock", Some(967));
 
-        let host = container_body(&definition(), &spec(RestartPolicy::Never), &socket)
+        let host = body(&definition(), &spec(RestartPolicy::Never), &socket)
             .host_config
             .unwrap();
 
         assert_eq!(host.binds, None);
         assert_eq!(host.group_add, None);
+    }
+
+    #[test]
+    fn gives_the_gpus_and_their_groups_to_a_runner_that_asks_for_them() {
+        let definition = definition().with_gpu_access(GpuAccess::Host);
+        let gpus = GpuDevices::parse("/dev/dri,/dev/kfd").unwrap();
+
+        let body = container_body(
+            &definition,
+            &spec(RestartPolicy::Never),
+            &EngineSocket::default(),
+            &gpus,
+            &BTreeSet::from([989, 985]),
+        );
+        let host = body.host_config.unwrap();
+
+        assert_eq!(host.devices, Some(gpus.mappings()));
+        assert_eq!(host.device_requests, None);
+        assert_eq!(
+            host.group_add,
+            Some(vec!["985".to_owned(), "989".to_owned()])
+        );
+        assert!(
+            !body
+                .env
+                .unwrap()
+                .iter()
+                .any(|variable| variable.starts_with("NVIDIA_"))
+        );
+    }
+
+    #[test]
+    fn joins_the_engines_group_and_the_gpus_once_each() {
+        let definition = definition()
+            .with_engine_access(EngineAccess::Host)
+            .with_gpu_access(GpuAccess::Host);
+
+        let host = container_body(
+            &definition,
+            &spec(RestartPolicy::Never),
+            &EngineSocket::new("/var/run/docker.sock", Some(967)),
+            &GpuDevices::default(),
+            &BTreeSet::from([967, 44]),
+        )
+        .host_config
+        .unwrap();
+
+        assert_eq!(
+            host.group_add,
+            Some(vec!["44".to_owned(), "967".to_owned()])
+        );
+    }
+
+    #[test]
+    fn asks_for_nvidias_gpus_with_every_capability_of_their_driver() {
+        let definition = definition().with_gpu_access(GpuAccess::Host);
+        let gpus = GpuDevices::parse("nvidia").unwrap();
+
+        let body = container_body(
+            &definition,
+            &spec(RestartPolicy::Never),
+            &EngineSocket::default(),
+            &gpus,
+            &BTreeSet::new(),
+        );
+        let host = body.host_config.unwrap();
+
+        assert_eq!(host.device_requests, Some(gpus.requests()));
+        assert_eq!(host.devices, None);
+        assert_eq!(host.group_add, None);
+        assert!(
+            body.env
+                .unwrap()
+                .contains(&"NVIDIA_DRIVER_CAPABILITIES=all".to_owned())
+        );
+    }
+
+    #[test]
+    fn gives_a_runner_that_does_not_ask_for_them_no_gpus() {
+        let gpus = GpuDevices::parse("/dev/dri,nvidia").unwrap();
+
+        let body = container_body(
+            &definition(),
+            &spec(RestartPolicy::Never),
+            &EngineSocket::default(),
+            &gpus,
+            &BTreeSet::from([44]),
+        );
+        let host = body.host_config.unwrap();
+
+        assert_eq!(host.devices, None);
+        assert_eq!(host.device_requests, None);
+        assert_eq!(host.group_add, None);
+        assert_eq!(body.env.unwrap().len(), 2);
+    }
+
+    #[test]
+    fn probes_the_gpus_groups_with_find_and_stat_offline() {
+        let image = ImageReference::new("ghcr.io/actions/actions-runner:latest").unwrap();
+        let gpus = GpuDevices::parse("/dev/dri,/dev/kfd,nvidia").unwrap();
+
+        let body = gpu_probe_body(&image, &gpus);
+        let host = body.host_config.unwrap();
+
+        assert_eq!(body.image.as_deref(), Some(image.as_str()));
+        assert_eq!(body.entrypoint.unwrap(), ["find"]);
+        assert_eq!(
+            body.cmd.unwrap(),
+            [
+                "/dev/dri", "/dev/kfd", "-type", "c", "-exec", "stat", "-c", "%g", "{}", "+"
+            ]
+        );
+        assert_eq!(body.labels, None);
+        assert_eq!(body.network_disabled, Some(true));
+        assert_eq!(host.devices, Some(gpus.mappings()));
+        assert_eq!(host.device_requests, None);
     }
 
     #[test]
@@ -636,7 +929,7 @@ mod tests {
         spec.command.clear();
 
         assert_eq!(
-            container_body(&definition(), &spec, &EngineSocket::default()).cmd,
+            body(&definition(), &spec, &EngineSocket::default()).cmd,
             None
         );
     }
@@ -650,7 +943,7 @@ mod tests {
             ),
             (RestartPolicy::Never, RestartPolicyNameEnum::NO),
         ] {
-            let host = container_body(&definition(), &spec(restart), &EngineSocket::default())
+            let host = body(&definition(), &spec(restart), &EngineSocket::default())
                 .host_config
                 .unwrap();
 

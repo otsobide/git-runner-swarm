@@ -13,4 +13,7 @@ services:
       GRS_GITHUB_IMAGE: git-runner-swarm-e2e-runner:latest
       # The stand-in stops at once; no test should wait 30 seconds for it.
       GRS_STOP_TIMEOUT: "2"
+      # Stands in for a GPU, which no CI host has: a device file every host
+      # has, given to runners asking for the host's GPUs as /dev/dri is.
+      GRS_RUNNER_GPUS: /dev/null
       RUST_LOG: info

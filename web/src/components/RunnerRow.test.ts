@@ -49,6 +49,11 @@ describe('RunnerRow', () => {
     expect(row(aRunner()).find('.engine').exists()).toBe(false)
   })
 
+  it('says when a runner’s jobs use this host’s GPUs', () => {
+    expect(row(aRunner({ host_gpu: true })).find('.gpu').text()).toBe('Its jobs use this host’s GPUs')
+    expect(row(aRunner()).find('.gpu').exists()).toBe(false)
+  })
+
   it('opens the runner’s logs, whatever it is doing', async () => {
     const runner = aRunner({ status: 'exited', exit_code: 1 })
     const wrapper = row(runner, true)

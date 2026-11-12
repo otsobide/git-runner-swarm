@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use swarm_application::CreateRunner;
 use swarm_application::ports::RunnerImage;
 use swarm_domain::{
-    CpuLimit, EngineAccess, InvalidValue, LogLine, LogTail, MemoryLimit, OwnerName,
+    CpuLimit, EngineAccess, GpuAccess, InvalidValue, LogLine, LogTail, MemoryLimit, OwnerName,
     RegistrationToken, RepositoryName, Runner, RunnerFilter, RunnerLabel, RunnerLabels,
     RunnerLifecycle, RunnerLimits, RunnerName, RunnerScope,
 };
@@ -34,6 +34,8 @@ pub(crate) struct RunnerResponse {
     memory: Option<String>,
     /// Whether its jobs are given the host's Docker.
     host_docker: bool,
+    /// Whether its jobs are given the host's GPUs.
+    host_gpu: bool,
     image: String,
     status: &'static str,
     exit_code: Option<i64>,
@@ -65,6 +67,7 @@ impl From<&Runner> for RunnerResponse {
                 .memory()
                 .map(|memory| memory.to_string()),
             host_docker: definition.engine_access().is_host(),
+            host_gpu: definition.gpu_access().is_host(),
             image: runner.image().to_string(),
             status: runner.status().as_str(),
             exit_code: runner.exit_code(),
@@ -122,6 +125,9 @@ pub(crate) struct CreateRunnerRequest {
     /// Whether its jobs are given the host's Docker; not unless asked.
     #[serde(default)]
     host_docker: bool,
+    /// Whether its jobs are given the host's GPUs; not unless asked.
+    #[serde(default)]
+    host_gpu: bool,
     /// The key of the image to create the runner from; the forge's default
     /// unless given.
     #[serde(default)]
@@ -183,6 +189,11 @@ impl CreateRunnerRequest {
                 EngineAccess::Host
             } else {
                 EngineAccess::Isolated
+            },
+            gpu_access: if self.host_gpu {
+                GpuAccess::Host
+            } else {
+                GpuAccess::None
             },
             token: RegistrationToken::new(self.token)?,
             image: present(self.image),
@@ -326,6 +337,7 @@ mod tests {
         assert_eq!(command.lifecycle, RunnerLifecycle::Persistent);
         assert!(command.limits.is_none());
         assert_eq!(command.engine_access, EngineAccess::Isolated);
+        assert_eq!(command.gpu_access, GpuAccess::None);
         assert_eq!(command.image, None);
     }
 
@@ -341,6 +353,7 @@ mod tests {
             "cpus": "1.5",
             "memory": "4g",
             "host_docker": true,
+            "host_gpu": true,
             "image": "github-official",
         }))
         .into_command()
@@ -352,6 +365,7 @@ mod tests {
         assert_eq!(command.limits.cpus().unwrap().millis(), 1500);
         assert_eq!(command.limits.memory().unwrap().to_string(), "4g");
         assert_eq!(command.engine_access, EngineAccess::Host);
+        assert_eq!(command.gpu_access, GpuAccess::Host);
         assert_eq!(command.image.as_deref(), Some("github-official"));
     }
 
@@ -468,7 +482,8 @@ mod tests {
             RunnerName::new("builder").unwrap(),
             RunnerLabels::parse_comma_separated("gpu,large").unwrap(),
             RunnerLifecycle::Ephemeral,
-        );
+        )
+        .with_gpu_access(GpuAccess::Host);
         let runner = Runner::new(
             definition,
             ImageReference::new("ghcr.io/actions/actions-runner:latest").unwrap(),
@@ -494,6 +509,7 @@ mod tests {
                 "cpus": null,
                 "memory": null,
                 "host_docker": false,
+                "host_gpu": true,
                 "image": "ghcr.io/actions/actions-runner:latest",
                 "status": "exited",
                 "exit_code": 1,

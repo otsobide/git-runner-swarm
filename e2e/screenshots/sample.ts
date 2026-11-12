@@ -18,6 +18,7 @@ export interface SampleRunner {
   cpus: string | null
   memory: string | null
   host_docker: boolean
+  host_gpu: boolean
   image: string
   status: 'running' | 'restarting' | 'exited'
   exit_code: number | null
@@ -49,6 +50,7 @@ function runner(url: string, name: string, rest: Partial<SampleRunner> = {}): Sa
     cpus: null,
     memory: null,
     host_docker: false,
+    host_gpu: false,
     image,
     status: 'running',
     exit_code: null,
@@ -75,6 +77,7 @@ const runners: SampleRunner[] = [
   runner('https://github.com/lumen-labs/inference', 'gpu-1', {
     labels: ['gpu', 'cuda'],
     memory: '32g',
+    host_gpu: true,
     created_at: now - 3 * days,
   }),
   runner('https://github.com/lumen-labs/inference', 'nightly', {

@@ -79,11 +79,15 @@ async fn runtime(config: &Config) -> Result<Arc<dyn RunnerRuntime>, Box<dyn Erro
         RuntimeKind::Docker => {
             let docker = DockerRuntime::connect()?
                 .with_stop_timeout(config.stop_timeout)
-                .with_engine_socket(engine_socket(config));
+                .with_engine_socket(engine_socket(config))
+                .with_gpus(config.runner_gpus.clone());
             docker.ping().await.map_err(|error| {
                 format!("{error}; is the Docker socket mounted into the panel's container?")
             })?;
-            tracing::info!("runners run on Docker");
+            tracing::info!(
+                gpus = %config.runner_gpus,
+                "runners run on Docker; those given the host's GPUs are given these"
+            );
             Ok(Arc::new(docker))
         }
         RuntimeKind::Memory => {

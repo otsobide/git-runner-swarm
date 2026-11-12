@@ -4,6 +4,29 @@ Each release, and what it changed. Versions follow
 [Semantic Versioning](https://semver.org); while they are below 1.0,
 a minor release may change what an earlier one did.
 
+## 0.3.0, 2026-11-12
+
+### Added
+
+- **The host's GPUs for a runner's jobs**, only when asked, from the
+  form's GPU choice or the API (`host_gpu`): the GPUs' device files are
+  mapped into the runner's container, and its user joins the groups
+  owning them, so jobs can render, encode video and compute on them.
+  The runner's row says it has them.
+- `GRS_RUNNER_GPUS` says which GPUs are given: `/dev/dri` unless set,
+  as AMD's and Intel's GPUs are used; `/dev/kfd` beside it for ROCm;
+  `nvidia` for NVIDIA's, through the NVIDIA Container Toolkit, with
+  every capability of the driver.
+- The panel learns the groups owning the devices on the host with a
+  short-lived container of the runner's image, so it needs nothing more
+  mounted than Docker's socket. A host without the devices fails the
+  runner's creation, saying which it lacks.
+
+### Compatible
+
+- Runners created by earlier versions are read as they were: without
+  the GPUs.
+
 ## 0.2.2, 2026-11-10
 
 ### Distribution

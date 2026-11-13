@@ -1,4 +1,4 @@
-# git-runner-swarm
+# Git Runner Swarm
 
 A web panel for self-hosted GitHub Actions runners. Each runner is a
 Docker container running GitHub's official runner image. You create
